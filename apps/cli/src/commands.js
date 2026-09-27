@@ -223,6 +223,10 @@ export async function update({ positional: [file], flags }) {
   const changedIds = [...diff.added, ...diff.modified, ...diff.removed];
   const resolveIds = flags.resolve ? String(flags.resolve).split(',').map((s) => s.trim()).filter(Boolean) : [];
 
+  const unknown = resolveIds.filter((id) => !ws.feedback().some((f) => f.id === id));
+  if (unknown.length) {
+    throw new AxiError('FEEDBACK_NOT_FOUND', `Unknown feedback id(s): ${unknown.join(', ')} — nothing was written.`, { next: ['sherlock feedback --all'], exit: EXIT.NOT_FOUND });
+  }
   if (!changedIds.length && !diff.projectChanged && !resolveIds.length) {
     emit({ title: 'NO CHANGES', fields: [['REVISION', ws.project().revision]], next: [] });
     return;
@@ -462,16 +466,16 @@ export async function poll({ flags }) {
 }
 
 function resolveFeedback(ws, ids, { note, status = 'resolved', changedIds = [], revision = null }) {
-  const list = ws.feedback();
-  const missing = ids.filter((id) => !list.some((f) => f.id === id));
-  if (missing.length) {
-    throw new AxiError('FEEDBACK_NOT_FOUND', `Unknown feedback id(s): ${missing.join(', ')}`, { next: ['sherlock feedback --all'], exit: EXIT.NOT_FOUND });
-  }
-  const next = list.map((f) => (ids.includes(f.id)
-    ? updateFeedback(f, { status, message: note ?? (status === 'resolved' ? 'Resolved.' : 'Dismissed.'), author: 'claude', changedIds, revision })
-    : f));
-  ws.write('feedback.json', next);
-  return ids;
+  return ws.mutate('feedback.json', [], (list) => {
+    const missing = ids.filter((id) => !list.some((f) => f.id === id));
+    if (missing.length) {
+      throw new AxiError('FEEDBACK_NOT_FOUND', `Unknown feedback id(s): ${missing.join(', ')}`, { next: ['sherlock feedback --all'], exit: EXIT.NOT_FOUND });
+    }
+    const value = list.map((f) => (ids.includes(f.id)
+      ? updateFeedback(f, { status, message: note ?? (status === 'resolved' ? 'Resolved.' : 'Dismissed.'), author: 'claude', changedIds, revision })
+      : f));
+    return { value, result: ids };
+  });
 }
 
 export async function resolve({ positional: ids, flags }) {
