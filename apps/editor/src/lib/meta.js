@@ -35,6 +35,12 @@ const RTL = /[֐-ࣿ]/;
 /** Text direction for user content (PRDs may be RTL, e.g. Hebrew). */
 export const dirOf = (text) => (RTL.test(String(text ?? '')) ? 'rtl' : 'ltr');
 
+/**
+ * One direction for a whole block (a list, a document), so its layout does
+ * not flip item by item when English and Hebrew entries are mixed.
+ */
+export const dirOfAll = (texts) => (texts.some((t) => RTL.test(String(t ?? ''))) ? 'rtl' : 'ltr');
+
 export function allEntities(model) {
   const out = [];
   for (const kind of Object.keys(KINDS)) for (const e of model?.[kind] || []) out.push({ kind, e });

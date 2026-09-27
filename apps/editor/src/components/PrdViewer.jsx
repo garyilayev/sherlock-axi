@@ -1,18 +1,29 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { IdChip, PrdText, Icon } from './ui.jsx';
-import { dirOf } from '../lib/meta.js';
+import { dirOf, dirOfAll } from '../lib/meta.js';
 
 export default function PrdViewer({ prd, analysis, sectionId, excerpt, onSelectSection, onOpen }) {
   const contentRef = useRef(null);
   const [filter, setFilter] = useState('');
   const bySection = analysis?.provenance?.bySection ?? {};
 
+  // Jump (not smooth-scroll: long PRDs take seconds and get interrupted) to
+  // the section, then to the highlighted quote inside it.
   useEffect(() => {
-    if (!sectionId || !contentRef.current) return;
-    const el = contentRef.current.querySelector(`[data-sid="${CSS.escape(sectionId)}"]`);
-    el?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  }, [sectionId, prd]);
+    if (!sectionId || !contentRef.current) return undefined;
+    const raf = requestAnimationFrame(() => {
+      const el = contentRef.current?.querySelector(`[data-sid="${CSS.escape(sectionId)}"]`);
+      if (!el) return;
+      const mark = el.querySelector('mark');
+      (mark ?? el).scrollIntoView({ block: mark ? 'center' : 'start' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [sectionId, excerpt, prd]);
+
+  // A Hebrew PRD reads right-to-left as a whole: outline numbers and headings
+  // sit on the right, and mixed English lines don't flip the layout.
+  const docDir = useMemo(() => (prd ? dirOfAll(prd.sections.slice(0, 40).map((s) => s.heading)) : 'ltr'), [prd]);
 
   if (!prd) return <div className="empty">No PRD extracted. Run <span className="mono">sherlock analyze &lt;prd&gt;</span>.</div>;
   const f = filter.trim().toLowerCase();
@@ -20,8 +31,8 @@ export default function PrdViewer({ prd, analysis, sectionId, excerpt, onSelectS
 
   return (
     <div className="prd">
-      <nav className="prd-outline" aria-label="PRD outline">
-        <div style={{ padding: '0 6px 10px' }}>
+      <nav className="prd-outline" aria-label="PRD outline" dir={docDir}>
+        <div style={{ padding: '0 6px 10px' }} dir="ltr">
           <div style={{ fontWeight: 600, marginBottom: 2 }}>{prd.document}</div>
           <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>{prd.sections.length} sections · {prd.words?.toLocaleString()} words</div>
           <input type="search" placeholder="Find section…" value={filter} onChange={(e) => setFilter(e.target.value)}
@@ -29,14 +40,14 @@ export default function PrdViewer({ prd, analysis, sectionId, excerpt, onSelectS
         </div>
         {outline.map((s) => (
           <button type="button" key={s.id} className={s.id === sectionId ? 'on' : ''} style={{ paddingInlineStart: 8 + (s.level - 1) * 12 }} onClick={() => onSelectSection(s.id)}>
-            <span className="sid">{s.number ?? '·'}</span>
+            <span className="sid">{s.number ? s.id : '·'}</span>
             <span className="grow" dir={dirOf(s.heading)} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.heading}</span>
             {bySection[s.id]?.length > 0 && <span className="cites" title="QA items citing this section">{bySection[s.id].length}</span>}
           </button>
         ))}
       </nav>
       <div className="prd-content" ref={contentRef}>
-        <article>
+        <article dir={docDir}>
           {excerpt && (
             <div className="info-box" style={{ marginBottom: 16 }}>
               <Icon name="info" size={16} />

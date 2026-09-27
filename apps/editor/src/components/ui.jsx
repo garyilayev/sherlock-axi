@@ -95,28 +95,50 @@ export function LinkedText({ text, onOpen, as: Tag = 'span', className }) {
   return <Tag className={className} dir={dirOf(s)}>{parts.map((p, i) => <Fragment key={i}>{p}</Fragment>)}</Tag>;
 }
 
-/** Highlight excerpt fragments (split on "…" / "...") inside a string. */
+/**
+ * Normalize like the provenance check (lowercase, letters/digits only, Hebrew
+ * niqqud dropped) while remembering where each normalized char came from, so
+ * a quote that verified in the CLI also highlights here.
+ */
+const NIQQUD = /[֑-ׇ]/; // Hebrew vowel points / cantillation
+
+function normalizedIndex(text) {
+  let norm = '';
+  const at = [];
+  let space = true;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (NIQQUD.test(ch)) continue;
+    if (/[\p{L}\p{N}]/u.test(ch)) { norm += ch.toLowerCase(); at.push(i); space = false; }
+    else if (!space) { norm += ' '; at.push(i); space = true; }
+  }
+  return { norm, at };
+}
+
+const normalizeFrag = (f) => normalizedIndex(f).norm.trim();
+
+/** Highlight excerpt fragments (split on "…", "..." and table-cell "|") inside a string. */
 export function Highlight({ text, excerpt }) {
   const s = String(text ?? '');
   const frags = String(excerpt ?? '')
-    .split(/\.{3}|…/)
-    .map((f) => f.trim().replace(/^["'“”]+|["'“”]+$/g, ''))
+    .split(/\.{3}|…|\|/)
+    .map(normalizeFrag)
     .filter((f) => f.length >= 3);
   if (!frags.length) return s;
+  const { norm, at } = normalizedIndex(s);
   const ranges = [];
-  const lower = s.toLowerCase();
   for (const f of frags) {
-    const i = lower.indexOf(f.toLowerCase());
-    if (i >= 0) ranges.push([i, i + f.length]);
+    const i = norm.indexOf(f);
+    if (i >= 0) ranges.push([at[i], at[i + f.length - 1] + 1]);
   }
   if (!ranges.length) return s;
-  ranges.sort((a, b) => a[0] - b[0]);
+  ranges.sort((x, y) => x[0] - y[0]);
   const out = [];
   let pos = 0;
-  ranges.forEach(([a, b], k) => {
-    if (a < pos) return;
-    out.push(s.slice(pos, a), <mark key={k}>{s.slice(a, b)}</mark>);
-    pos = b;
+  ranges.forEach(([x, y], k) => {
+    if (x < pos) return;
+    out.push(s.slice(pos, x), <mark key={k}>{s.slice(x, y)}</mark>);
+    pos = y;
   });
   out.push(s.slice(pos));
   return <>{out}</>;

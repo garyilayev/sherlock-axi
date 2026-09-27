@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { ClassBadge, CoverageBadge, IdChip, SourceBadge, Icon } from './ui.jsx';
 import { KINDS, titleOf, dirOf } from '../lib/meta.js';
 
@@ -7,6 +7,14 @@ const CLASSES = ['explicit', 'derived', 'inferred', 'ambiguous'];
 const OPEN_GAP = (g) => !['resolved', 'answered', 'closed', 'dismissed'].includes(g.status);
 
 function Seg({ options, value, onChange }) {
+  // Many options (e.g. 16 test types) don't fit a segmented control.
+  if (options.length > 6) {
+    return (
+      <select className="seg-select" value={value} onChange={(e) => onChange(e.target.value)} aria-label="Filter">
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}{o.n != null ? ` (${o.n})` : ''}</option>)}
+      </select>
+    );
+  }
   return (
     <div className="seg">
       {options.map((o) => (
@@ -36,7 +44,8 @@ function columnsFor(kind, a, onOpen) {
     return new Set([...l.out, ...l.in].map((x) => x.id).filter((x) => x.startsWith(KINDS[k].prefix + '-'))).size;
   };
   const common = { key: 'class', label: 'Class', render: (e) => <ClassBadge value={e.classification} />, width: 100 };
-  const source = { key: 'src', label: 'Source', render: (e) => <SourceCell e={e} a={a} />, width: 110 };
+  // optional columns are dropped while the inspector is open, so titles keep room to breathe.
+  const source = { key: 'src', label: 'Source', render: (e) => <SourceCell e={e} a={a} />, width: 110, optional: true };
   switch (kind) {
     case 'requirements':
       return [
@@ -47,22 +56,22 @@ function columnsFor(kind, a, onOpen) {
             {cov[e.id]?.ambiguous && <span className="badge ambiguous">Open gap</span>}
           </div>
         ) },
-        { key: 'tests', label: 'Tests', width: 70, render: (e) => <span className="mono">{cov[e.id]?.tests.length ?? 0}</span> },
+        { key: 'tests', label: 'Tests', width: 70, optional: true, render: (e) => <span className="mono">{cov[e.id]?.tests.length ?? 0}</span> },
         source,
       ];
     case 'testCases':
       return [
         { key: 'type', label: 'Type', width: 120, render: (e) => <span className="badge kind">{e.type ?? '–'}</span> },
-        { key: 'prio', label: 'Priority', width: 90, render: (e) => <span className={`badge ${e.priority === 'critical' || e.priority === 'high' ? 'warn' : ''}`}>{e.priority ?? '–'}</span> },
-        common,
-        { key: 'reqs', label: 'Requirements', width: 170, render: (e) => (
+        { key: 'prio', label: 'Priority', width: 90, optional: true, render: (e) => <span className={`badge ${e.priority === 'critical' || e.priority === 'high' ? 'warn' : ''}`}>{e.priority ?? '–'}</span> },
+        { ...common, optional: true },
+        { key: 'reqs', label: 'Requirements', width: 130, render: (e) => (
           <div className="row wrap" style={{ gap: 4 }}>{(e.requirementIds || []).map((r) => <IdChip key={r} id={r} onOpen={onOpen} />)}</div>
         ) },
       ];
     case 'flows':
-      return [common, { key: 'steps', label: 'Steps', width: 70, render: (e) => <span className="mono">{e.steps?.length ?? 0}</span> }, source];
+      return [common, { key: 'steps', label: 'Steps', width: 70, optional: true, render: (e) => <span className="mono">{e.steps?.length ?? 0}</span> }, source];
     case 'screens':
-      return [common, { key: 'tests', label: 'Tests', width: 70, render: (e) => <span className="mono">{linkCount(e.id, 'testCases')}</span> }, source];
+      return [common, { key: 'tests', label: 'Tests', width: 70, optional: true, render: (e) => <span className="mono">{linkCount(e.id, 'testCases')}</span> }, source];
     case 'validations':
     case 'businessRules':
       return [
@@ -100,7 +109,24 @@ function GapList({ items, selectedId, onOpen, feedbackBy, changed }) {
   );
 }
 
-export default function EntityList({ kind, state, selectedId, onOpen }) {
+const Row = memo(function Row({ e, cols, selected, changed, fb, onOpen }) {
+  return (
+    <tr className={`${selected ? 'selected' : ''} ${changed ? 'flash' : ''}`} onClick={() => onOpen(e.id)}>
+      <td><span className="id-chip">{e.id}</span></td>
+      <td className="title-cell">
+        <div dir={dirOf(titleOf(e))}>
+          {titleOf(e)}
+          {fb > 0 && <span className="fb-dot" title={`${fb} open feedback`} />}
+          {changed && <> <span className="badge new">updated</span></>}
+        </div>
+        {e.description && <div className="desc" dir={dirOf(e.description)}>{e.description}</div>}
+      </td>
+      {cols.map((c) => <td key={c.key}>{c.render(e)}</td>)}
+    </tr>
+  );
+});
+
+export default function EntityList({ kind, state, selectedId, onOpen, compact = false }) {
   const { model, analysis: a, feedback, project } = state;
   const list = model[kind] || [];
   const [q, setQ] = useState('');
@@ -154,8 +180,8 @@ export default function EntityList({ kind, state, selectedId, onOpen }) {
     });
   }, [list, q, cls, extra, kind, a]);
 
-  const cols = columnsFor(kind, a, onOpen);
-  const clsCounts = Object.fromEntries(CLASSES.map((c) => [c, list.filter((e) => e.classification === c).length]));
+  const cols = useMemo(() => columnsFor(kind, a, onOpen).filter((c) => !(compact && c.optional)), [kind, a, onOpen, compact]);
+  const clsCounts = useMemo(() => Object.fromEntries(CLASSES.map((c) => [c, list.filter((e) => e.classification === c).length])), [list]);
 
   return (
     <div className="page">
@@ -188,18 +214,7 @@ export default function EntityList({ kind, state, selectedId, onOpen }) {
             </thead>
             <tbody>
               {items.map((e) => (
-                <tr key={e.id} className={`${selectedId === e.id ? 'selected' : ''} ${changed.has(e.id) ? 'flash' : ''}`} onClick={() => onOpen(e.id)}>
-                  <td><span className="id-chip">{e.id}</span></td>
-                  <td className="title-cell">
-                    <div dir={dirOf(titleOf(e))}>
-                      {titleOf(e)}
-                      {feedbackBy[e.id] && <span className="fb-dot" title={`${feedbackBy[e.id]} open feedback`} />}
-                      {changed.has(e.id) && <> <span className="badge new">updated</span></>}
-                    </div>
-                    {e.description && <div className="desc" dir={dirOf(e.description)}>{e.description}</div>}
-                  </td>
-                  {cols.map((c) => <td key={c.key}>{c.render(e)}</td>)}
-                </tr>
+                <Row key={e.id} e={e} cols={cols} selected={selectedId === e.id} changed={changed.has(e.id)} fb={feedbackBy[e.id] || 0} onOpen={onOpen} />
               ))}
             </tbody>
           </table>

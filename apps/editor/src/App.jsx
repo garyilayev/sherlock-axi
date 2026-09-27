@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSherlock } from './lib/api.js';
 import { useHashRoute } from './lib/router.js';
 import { KINDS, kindOfId, indexModel } from './lib/meta.js';
@@ -42,6 +42,16 @@ export default function App() {
     return () => clearTimeout(t);
   }, [api.lastEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Selecting an entity keeps the current list view when it matches, otherwise jumps to its kind.
+  // Stable per view, so memoized table rows don't re-render on every selection.
+  const openEntity = useCallback((id) => {
+    const kind = kindOfId(id);
+    if (!kind) return;
+    const v = route.view;
+    const view = v === kind || v === 'overview' || v === 'feedback' || v === 'prd' ? v : kind;
+    navigate(view === 'prd' ? kind : view, id);
+  }, [route.view, navigate]);
+
   // Escape closes the inspector.
   useEffect(() => {
     const onKey = (e) => {
@@ -67,13 +77,6 @@ export default function App() {
     );
   }
 
-  // Selecting an entity keeps the current list view when it matches, otherwise jumps to its kind.
-  const openEntity = (id) => {
-    const kind = kindOfId(id);
-    if (!kind) return;
-    const view = route.view === kind || route.view === 'overview' || route.view === 'feedback' || route.view === 'prd' ? route.view : kind;
-    navigate(view === 'prd' ? kind : view, id);
-  };
   const selectedId = route.id && kindOfId(route.id) ? route.id : null;
   const isKindView = !!KINDS[route.view];
   const openPrd = (sectionId, excerpt) => navigate('prd', sectionId, excerpt ? { hl: excerpt } : undefined);
@@ -89,7 +92,7 @@ export default function App() {
   } else if (route.view === 'feedback') {
     content = <FeedbackView state={state} onOpen={openEntity} onPatch={api.patchFeedback} />;
   } else if (isKindView) {
-    content = <EntityList key={route.view} kind={route.view} state={state} selectedId={selectedId} onOpen={openEntity} />;
+    content = <EntityList key={route.view} kind={route.view} state={state} selectedId={selectedId} onOpen={openEntity} compact={!!showInspector} />;
   } else {
     content = <Overview state={state} navigate={(v) => navigate(v)} onOpen={openEntity} />;
   }

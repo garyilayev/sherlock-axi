@@ -2,7 +2,7 @@
 import { Fragment, useMemo } from 'react';
 import { Icon, ClassBadge, KindBadge, CoverageBadge, SourceBadge, IdChip, LinkedText } from './ui.jsx';
 import { FeedbackPanel } from './Feedback.jsx';
-import { KINDS, CLASS_HELP, kindOfId, titleOf, dirOf } from '../lib/meta.js';
+import { KINDS, CLASS_HELP, kindOfId, titleOf, dirOf, dirOfAll } from '../lib/meta.js';
 
 const HEAD_ICON = { flows: 'flowNodes', requirements: 'file', screens: 'monitor', testCases: 'checkSquare', gaps: 'warning' };
 const KNOWN = new Set([
@@ -22,12 +22,12 @@ function stepParts(s) {
 }
 
 function Steps({ steps, onOpen }) {
+  const parts = steps.map(stepParts);
   return (
-    <ol className="steps">
-      {steps.map((s, i) => {
-        const p = stepParts(s);
+    <ol className="steps" dir={dirOfAll(parts.map((p) => `${p.title} ${p.detail ?? ''}`))}>
+      {parts.map((p, i) => {
         return (
-          <li key={i} dir={dirOf(`${p.title} ${p.detail ?? ''}`)}>
+          <li key={i}>
             <span className="num">{i + 1}</span>
             <div>
               <LinkedText as="div" className="st" text={p.title} onOpen={onOpen} />

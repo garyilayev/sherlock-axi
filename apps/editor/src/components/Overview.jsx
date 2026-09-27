@@ -1,6 +1,6 @@
 'use client';
 import { Icon, Bar, IdChip, LinkedText } from './ui.jsx';
-import { KINDS, dirOf, timeAgo } from '../lib/meta.js';
+import { KINDS, dirOf, dirOfAll, timeAgo } from '../lib/meta.js';
 
 const TRUSTED = new Set(['verified', 'paraphrased', 'section-only', 'inherited']);
 const BREAKDOWN_ICONS = { requirements: 'file', screens: 'monitor', flows: 'flowNodes', testCases: 'checkSquare', validations: 'gaps', gaps: 'warning' };
@@ -38,6 +38,7 @@ export default function Overview({ state, navigate, onOpen }) {
   };
   const breakdownKinds = ['requirements', 'screens', 'flows', 'testCases', 'validations', 'gaps'];
   const changes = (project?.changes ?? []).slice(0, 4);
+  const featuresDir = dirOfAll((model.project.keyFeatures || []).map((f) => (typeof f === 'string' ? f : f.title)));
 
   return (
     <div className="page">
@@ -67,9 +68,11 @@ export default function Overview({ state, navigate, onOpen }) {
             const ids = typeof f === 'string' ? [] : f.requirementIds || [];
             return (
               <li key={i}>
-                <button type="button" onClick={() => ids[0] && onOpen(ids[0])} title={ids.join(', ')}>
+                {/* The whole row takes the text's direction so the check stays next to RTL text. */}
+                <button type="button" dir={featuresDir} onClick={() => ids[0] && onOpen(ids[0])} title={ids.join(', ')}>
                   <Icon name="check" className="check" size={17} />
-                  <span className="grow" dir={dirOf(title)}>{title}</span>
+                  <span className="grow">{title}</span>
+                  {ids.length > 0 && <span className="feature-ids">{ids.slice(0, 3).map((id) => <IdChip key={id} id={id} />)}</span>}
                 </button>
               </li>
             );
