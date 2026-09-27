@@ -1,0 +1,15 @@
+{
+  "name": "sherlock",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first AI QA workspace for Claude Code",
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build": "npm run build -w @sherlock/editor",
+    "dev:editor": "npm run dev -w @sherlock/editor",
+    "test": "node --test \"packages/*/test/*.test.js\" \"apps/cli/test/*.test.js\"",
+    "setup": "node apps/cli/bin/sherlock.js setup"
+  },
+  "engines": { "node": ">=18.17" }
+}

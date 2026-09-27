@@ -1,0 +1,12 @@
+{
+  "name": "@sherlock/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "sherlock": "bin/sherlock.js" },
+  "dependencies": {
+    "@sherlock/qa-model": "0.1.0"
+  },
+  "optionalDependencies": {
+    "pdfjs-dist": "^4.10.38"
+  }
+}

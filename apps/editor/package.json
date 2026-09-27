@@ -1,0 +1,17 @@
+{
+  "name": "@sherlock/editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 4871",
+    "build": "next build",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^15.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@sherlock/qa-model": "0.1.0"
+  }
+}

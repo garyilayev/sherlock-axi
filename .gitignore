@@ -1,0 +1,4 @@
+node_modules
+apps/editor/.next
+apps/editor/out
+.sherlock
