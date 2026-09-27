@@ -90,7 +90,7 @@ export default function App() {
         onSelectSection={(sid) => navigate('prd', sid)} onOpen={(id) => navigate(kindOfId(id), id)} />
     );
   } else if (route.view === 'feedback') {
-    content = <FeedbackView state={state} onOpen={openEntity} onPatch={api.patchFeedback} />;
+    content = <FeedbackView state={state} onOpen={openEntity} onPatch={api.patchFeedback} onSend={api.sendFeedback} />;
   } else if (isKindView) {
     content = <EntityList key={route.view} kind={route.view} state={state} selectedId={selectedId} onOpen={openEntity} compact={!!showInspector} />;
   } else {

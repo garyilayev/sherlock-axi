@@ -205,7 +205,12 @@ export default function Inspector({ id, state, byId, onOpen, onClose, openPrd, s
   const { kind, e } = hit;
   const v = a.provenance.perEntity[id] || { status: 'missing' };
   const cov = a.coverage.perRequirement[id];
-  const sectionId = v.sectionId ?? null;
+  // Inherited provenance (e.g. a test with source: { requirementId }) still
+  // traces to the PRD: use the section and quote of the entity it came through.
+  const via = v.status === 'inherited' && v.via ? byId.get(v.via)?.e : null;
+  const viaProv = via ? a.provenance.perEntity[via.id] : null;
+  const sectionId = v.sectionId ?? viaProv?.sectionId ?? null;
+  const quote = e.source?.excerpt ?? (viaProv?.sectionId ? via?.source?.excerpt : null);
   const section = sectionId && prd?.sections?.find((s) => s.id === sectionId);
   const lc = project?.lastChange;
   const changed = lc && lc.type !== 'create' && [...(lc.added || []), ...(lc.modified || [])].includes(id);
@@ -285,9 +290,10 @@ export default function Inspector({ id, state, byId, onOpen, onClose, openPrd, s
               {v.status === 'missing' && <div className="loc tone-bad">No PRD source — ask Claude where this came from.</div>}
             </div>
           </div>
-          {e.source?.excerpt && <blockquote className="source-quote" dir={dirOf(e.source.excerpt)}>{e.source.excerpt}</blockquote>}
+          {quote && <blockquote className="source-quote" dir={dirOf(quote)}>{quote}</blockquote>}
+          {quote && !e.source?.excerpt && <div className="faint" style={{ fontSize: 12, marginTop: 4 }}>Quoted in {via.id}</div>}
           {section && (
-            <button type="button" className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => openPrd(section.id, e.source?.excerpt)}>
+            <button type="button" className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => openPrd(section.id, quote)}>
               View in PRD <Icon name="chevronRight" size={13} />
             </button>
           )}

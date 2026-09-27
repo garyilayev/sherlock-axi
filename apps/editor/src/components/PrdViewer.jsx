@@ -6,6 +6,7 @@ import { dirOf, dirOfAll } from '../lib/meta.js';
 export default function PrdViewer({ prd, analysis, sectionId, excerpt, onSelectSection, onOpen }) {
   const contentRef = useRef(null);
   const [filter, setFilter] = useState('');
+  const [expanded, setExpanded] = useState(() => new Set());
   const bySection = analysis?.provenance?.bySection ?? {};
 
   // Jump (not smooth-scroll: long PRDs take seconds and get interrupted) to
@@ -68,8 +69,10 @@ export default function PrdViewer({ prd, analysis, sectionId, excerpt, onSelectS
                 {cites.length > 0 && (
                   <div className="cited-by">
                     <span>Generated from this section:</span>
-                    {cites.slice(0, 16).map((id) => <IdChip key={id} id={id} onOpen={onOpen} />)}
-                    {cites.length > 16 && <span>+{cites.length - 16}</span>}
+                    {(expanded.has(s.id) ? cites : cites.slice(0, 16)).map((id) => <IdChip key={id} id={id} onOpen={onOpen} />)}
+                    {cites.length > 16 && !expanded.has(s.id) && (
+                      <button type="button" className="btn sm ghost" onClick={() => setExpanded((x) => new Set(x).add(s.id))}>+{cites.length - 16} more</button>
+                    )}
                   </div>
                 )}
                 <PrdText text={s.text} excerpt={focus ? excerpt : null} />

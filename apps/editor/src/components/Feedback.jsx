@@ -14,6 +14,7 @@ const QUICK = {
   testCases: [['correction', 'The expected result is wrong: '], ['missing', 'Add a test for '], ['missing', 'Add a boundary/negative case: ']],
   requirements: [['question', 'Where did this requirement come from?'], ['correction', 'The PRD says '], ['missing', 'Missing test coverage for ']],
   flows: [['missing', 'This flow is missing a step: '], ['correction', 'Step order is wrong: ']],
+  project: [['missing', 'The guide is missing '], ['question', 'Why is there no coverage for '], ['correction', 'Across the guide, ']],
   gaps: [['correction', 'Answer: '], ['remove', 'This is not a real gap — the PRD covers it in §']],
   default: [['question', 'Why did Sherlock generate this?'], ['correction', 'This is wrong: '], ['remove', 'Not relevant — remove it.']],
 };
@@ -72,7 +73,7 @@ export function FeedbackItem({ f, onPatch, onOpen, showTarget }) {
   );
 }
 
-export function FeedbackPanel({ targetId, kind, feedback, onSend, onPatch, onOpen }) {
+export function FeedbackPanel({ targetId, kind, feedback, onSend, onPatch, onOpen, hideThread = false, placeholder }) {
   const [text, setText] = useState('');
   const [type, setType] = useState('correction');
   const [busy, setBusy] = useState(false);
@@ -94,7 +95,7 @@ export function FeedbackPanel({ targetId, kind, feedback, onSend, onPatch, onOpe
 
   return (
     <div>
-      {items.length > 0 && (
+      {!hideThread && items.length > 0 && (
         <div className="thread">
           {items.map((f) => <FeedbackItem key={f.id} f={f} onPatch={onPatch} onOpen={onOpen} />)}
         </div>
@@ -110,7 +111,7 @@ export function FeedbackPanel({ targetId, kind, feedback, onSend, onPatch, onOpe
           dir="auto"
           onChange={(e) => { setText(e.target.value); setSent(null); }}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
-          placeholder={`Feedback for Claude on ${targetId}…`}
+          placeholder={placeholder ?? `Feedback for Claude on ${targetId}…`}
           aria-label="Feedback"
         />
         <div className="bar2">
@@ -127,7 +128,7 @@ export function FeedbackPanel({ targetId, kind, feedback, onSend, onPatch, onOpe
   );
 }
 
-export function FeedbackView({ state, onOpen, onPatch }) {
+export function FeedbackView({ state, onOpen, onPatch, onSend }) {
   const [filter, setFilter] = useState('open');
   const list = [...(state.feedback || [])].reverse().filter((f) => filter === 'all' || f.status === filter);
   const count = (s) => (state.feedback || []).filter((f) => f.status === s).length;
@@ -147,6 +148,11 @@ export function FeedbackView({ state, onOpen, onPatch }) {
             </button>
           ))}
         </div>
+      </div>
+      <div className="card general-feedback" style={{ maxWidth: 820, padding: 14, marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>General feedback</div>
+        <FeedbackPanel targetId="project" kind="project" feedback={state.feedback} onSend={onSend} onPatch={onPatch} onOpen={onOpen}
+          hideThread placeholder="Feedback on the guide as a whole (missing areas, wrong assumptions)…" />
       </div>
       <div className="thread" style={{ maxWidth: 820 }}>
         {list.map((f) => <FeedbackItem key={f.id} f={f} onPatch={onPatch} onOpen={onOpen} showTarget />)}

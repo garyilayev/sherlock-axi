@@ -63,6 +63,21 @@ test('feedback → update with patch and --resolve', () => {
   assert.equal(run('inspect', '--json').json.coverage.covered, 2);
 });
 
+test('validate accepts a directory of model parts, merged in name order', () => {
+  fs.mkdirSync(path.join(dir, 'parts'), { recursive: true });
+  write('parts/00-project.json', { project: { name: 'Grants' } });
+  write('parts/01-reqs.json', { requirements: [model.requirements[0]] });
+  write('parts/02-reqs.json', { requirements: [model.requirements[1]] });
+  write('parts/03-tests.json', { testCases: model.testCases });
+  const v = run('validate', 'parts', '--json').json;
+  assert.equal(v.ok, true);
+  assert.equal(v.errors.length, 0);
+  write('parts/04-broken.json', '{ "gaps": [ ');
+  const bad = run('validate', 'parts');
+  assert.equal(bad.code, 2);
+  assert.match(bad.out, /INVALID_JSON[\s\S]*04-broken\.json/);
+});
+
 test('unverifiable quotes are flagged', () => {
   write('patch2.json', { merge: [{ id: 'REQ-002', source: { section: '5.4', excerpt: 'grants are deleted forever' } }] });
   const v = run('validate', 'patch2.json');

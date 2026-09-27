@@ -33,6 +33,30 @@ function readJsonFile(file) {
   }
 }
 
+/**
+ * A model file, or a directory of part files (e.g. .sherlock/parts/) merged in
+ * name order: arrays concatenate, objects shallow-merge. Large PRDs are easier
+ * to write, fix and review as several smaller JSON files.
+ */
+function readModelInput(file) {
+  const abs = path.resolve(file);
+  if (file === '-' || !fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) return readJsonFile(file);
+  const parts = fs.readdirSync(abs).filter((f) => f.endsWith('.json')).sort();
+  if (!parts.length) {
+    throw new AxiError('NO_PARTS', 'The directory has no .json part files.', { fields: { Dir: file }, next: ['write parts like 01-requirements.json, 02-screens.json …'], exit: EXIT.NOT_FOUND });
+  }
+  const model = {};
+  for (const name of parts) {
+    const part = readJsonFile(path.join(file, name));
+    for (const [k, v] of Object.entries(part)) {
+      if (Array.isArray(v)) model[k] = [...(Array.isArray(model[k]) ? model[k] : []), ...v];
+      else if (v && typeof v === 'object') model[k] = { ...model[k], ...v };
+      else model[k] = v;
+    }
+  }
+  return model;
+}
+
 function assertValid(result, file) {
   if (result.ok) return;
   throw new AxiError('MODEL_INVALID', `${result.errors.length} error(s) — nothing was written.`, {
@@ -169,7 +193,7 @@ export async function analyze({ positional: [file], flags }) {
 export async function create({ positional: [file], flags }) {
   if (!file) throw new AxiError('USAGE', 'Missing model path.', { next: ['sherlock create <model.json>'] });
   const ws = findWorkspace(flags.dir ?? file);
-  const model = readJsonFile(file);
+  const model = readModelInput(file);
   if (ws.exists('model.json') && !flags.force) {
     throw new AxiError('MODEL_EXISTS', 'Workspace already has a QA model.', {
       fields: { Workspace: ws.rel(ws.dir) },
@@ -202,7 +226,7 @@ export async function update({ positional: [file], flags }) {
   if (!file) throw new AxiError('USAGE', 'Missing model or patch path.', { next: ['sherlock update <model.json|patch.json|->'] });
   const ws = findWorkspace(flags.dir);
   const prev = ws.model();
-  const doc = readJsonFile(file);
+  const doc = readModelInput(file);
   let next;
   if (isPatch(doc)) {
     const r = applyPatch(prev, doc);
@@ -265,7 +289,7 @@ export async function validate({ positional: [file], flags }) {
   const ws = findWorkspace(flags.dir ?? file, { mustExist: false });
   const target = file ?? ws?.p('model.json');
   if (!target) throw new AxiError('USAGE', 'Missing model path.', { next: ['sherlock validate <model.json>'] });
-  let model = readJsonFile(target);
+  let model = readModelInput(target);
   if (isPatch(model)) model = applyPatch(ws.model(), model).model;
   const result = validateModel(model, { prd: ws?.prd() ?? null });
   emit({
@@ -546,10 +570,11 @@ PRD
   analyze <prd>            extract .docx/.pdf/.md → .sherlock/prd.md (+ section index)
 
 MODEL
-  create <model.json>      validate + install the first QA model
-  update <file|->          apply full model or patch {upsert,merge,remove,project}
+  create <model.json|dir>  validate + install the first QA model
+                           (a dir of part files is merged in name order)
+  update <file|dir|->      apply full model or patch {upsert,merge,remove,project}
          [--resolve FB-1,FB-2 --note "…"]
-  validate [file]          dry-run validation (errors, warnings, source checks)
+  validate [file|dir]      dry-run validation (errors, warnings, source checks)
   inspect                  compact status: counts, coverage, traceability, review state
   show <ID…>               one entity with links, coverage, source check, feedback
 
