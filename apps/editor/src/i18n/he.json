@@ -154,7 +154,7 @@
     "allAnswered": "כולם נענו",
     "keyFeatures": "יכולות מרכזיות",
     "noKeyFeatures": "לא הוגדרו יכולות מרכזיות.",
-    "coverageTraceability": "כיסוי ועקיבות",
+    "coverageTraceability": "כיסוי ומעקב",
     "coverageSummary": "{covered} מתוך {total} דרישות מכוסות במלואן",
     "traceSummary": "מקושרים ל-PRD · {verified} ציטוטים אומתו מילה במילה",
     "traced": "מקושר",
@@ -222,9 +222,10 @@
     "related": "קשורים",
     "source": "מקור",
     "notes": "הערות",
-    "traceability": "עקיבות",
+    "traceability": "הקשר",
     "feedback": "משוב",
-    "more": "+{count} נוספים"
+    "more": "+{count} נוספים",
+    "quotedIn": "מצוטט ב-{id}"
   },
   "feedback": {
     "title": "משובים",
@@ -240,6 +241,8 @@
     "add": "הוספה",
     "reopen": "פתיחה מחדש",
     "withdraw": "משיכה",
+    "general": "משוב כללי",
+    "generalPlaceholder": "משוב על המדריך כולו (תחומים חסרים, הנחות שגויות)…",
     "changedIn": "שונה בגרסה {rev}:",
     "emptyAll": "עדיין אין משובים. בחרו פריט כלשהו ולחצו „שליחה ל-Claude”.",
     "empty": "אין משובים ({status}). בחרו פריט כלשהו ולחצו „שליחה ל-Claude”.",
@@ -256,7 +259,10 @@
       "notAGap": "זה לא פער אמיתי — ה-PRD מכסה את זה בסעיף §",
       "why": "למה Sherlock יצר את זה?",
       "wrong": "זה שגוי: ",
-      "irrelevant": "לא רלוונטי — להסיר."
+      "irrelevant": "לא רלוונטי — להסיר.",
+      "guideMissing": "במדריך חסר ",
+      "noCoverageFor": "למה אין כיסוי עבור ",
+      "acrossGuide": "בכל המדריך, "
     }
   },
   "prd": {

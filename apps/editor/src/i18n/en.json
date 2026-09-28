@@ -224,7 +224,8 @@
     "notes": "Notes",
     "traceability": "Traceability",
     "feedback": "Feedback",
-    "more": "+{count} more"
+    "more": "+{count} more",
+    "quotedIn": "Quoted in {id}"
   },
   "feedback": {
     "title": "Feedback",
@@ -240,6 +241,8 @@
     "add": "Add",
     "reopen": "Reopen",
     "withdraw": "Withdraw",
+    "general": "General feedback",
+    "generalPlaceholder": "Feedback on the guide as a whole (missing areas, wrong assumptions)…",
     "changedIn": "Changed in rev {rev}:",
     "emptyAll": "No feedback yet. Select any item and use “Send to Claude”.",
     "empty": "No {status} feedback. Select any item and use “Send to Claude”.",
@@ -256,7 +259,10 @@
       "notAGap": "This is not a real gap — the PRD covers it in §",
       "why": "Why did Sherlock generate this?",
       "wrong": "This is wrong: ",
-      "irrelevant": "Not relevant — remove it."
+      "irrelevant": "Not relevant — remove it.",
+      "guideMissing": "The guide is missing ",
+      "noCoverageFor": "Why is there no coverage for ",
+      "acrossGuide": "Across the guide, "
     }
   },
   "prd": {
