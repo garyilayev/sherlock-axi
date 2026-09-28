@@ -1,15 +1,68 @@
 # Sherlock — local AI QA workspace for Claude Code
 
-```
-/sherlock PRD-Grants-Module.docx
-```
+Turn PRDs into traceable QA guides with Claude Code: local-first, with an editor in English and Hebrew.
 
-Claude reads the PRD and builds a structured, traceable QA model: requirements, screens,
-flows, validations, test cases and gaps. Sherlock then opens it as an interactive QA
-workspace in your browser. The QA reviews it and leaves feedback; Claude applies the
-feedback, and the page refreshes live.
+## Overview
+
+Sherlock turns a product requirements document (PRD) into a QA guide you can review and trace
+back to its source. You give Claude Code a PRD (`.docx`, `.pdf` or `.md`). Claude reads it the
+way a QA engineer would and writes a structured QA model: requirements, screens, flows,
+actions, validations, business rules, states, permissions, test cases and open gaps. Each item
+cites the PRD section and quote it came from, and Sherlock checks every quote against the PRD.
+
+Sherlock then opens the model in a local editor in your browser. There you review coverage and
+traceability, search everything with Spotlight (`Ctrl/⌘K`), and leave feedback on any item.
+Claude picks the feedback up, patches the model, and the page refreshes live. The editor
+supports English and Hebrew (full RTL). Everything stays on your machine: no cloud service,
+no database.
 
 **Claude is the intelligence. Sherlock is the workspace and the agent interface.**
+
+## Usage
+
+1. Install once (see [Setup](#setup)): `npm install && npm run build && npm run setup`.
+2. In any project, in Claude Code:
+
+   ```
+   /sherlock path/to/prd.docx
+   ```
+
+   Claude extracts the PRD, writes and validates the model, and opens the editor.
+3. Review in the browser: check coverage, open items in the inspector, jump to the quoted PRD
+   text, and use **Send to Claude** to leave feedback.
+4. Ask Claude to process the feedback (or leave it polling). It applies the changes with
+   `sherlock update … --resolve FB-001`, and the editor updates live.
+
+You can also run the CLI yourself. The commands are listed below and in [CLI](#cli).
+
+### Commands
+
+| Command | What it does |
+|---|---|
+| `sherlock analyze <prd>` | Extract a .docx/.pdf/.md PRD into `.sherlock/prd.md`, with anchored sections |
+| `sherlock create <model.json\|dir>` | Validate and install the first QA model |
+| `sherlock update <model\|patch\|dir> [--resolve FB-1 --note "…"]` | Apply a full model or a patch, and resolve feedback |
+| `sherlock validate [file\|dir]` | Dry-run validation: structure, links, quoted excerpts |
+| `sherlock inspect` | Compact status: counts, coverage, traceability, open gaps and feedback |
+| `sherlock show <ID…>` | One or more entities with their links and sources |
+| `sherlock open [--focus ID] [--no-browser]` | Start the local server and open the editor |
+| `sherlock stop` | Stop this workspace's server |
+| `sherlock feedback [--all]` | List QA feedback |
+| `sherlock poll` | Wait for new QA feedback |
+| `sherlock resolve <FB-ID…> [--dismiss]` | Mark feedback resolved or dismissed |
+| `sherlock eval <golden.json> [model]` | Regression: concept recall against a golden QA guide |
+| `sherlock setup [--project]` | Install the Claude Code skill |
+
+Repo scripts:
+
+| Script | What it does |
+|---|---|
+| `npm run build` | Build the editor (Next.js static export into `apps/editor/out`) |
+| `npm test` | Unit tests: model, CLI, server, PDF extraction, editor i18n and search |
+| `npm run setup` | Install the skill into `~/.claude/skills/sherlock` |
+| `npm run dev:editor` | Editor dev server on :4871, proxying to a running `sherlock open` |
+| `npm run lint:i18n` | Fail on hard-coded UI strings or physical left/right CSS |
+| `npm run e2e -w @sherlock/editor` | Playwright end-to-end checks (needs a build and a local workspace) |
 
 ## Setup
 
@@ -38,8 +91,7 @@ sherlock help
 npm unlink -g @sherlock/cli   # to remove
 ```
 
-On Windows the shims are written to `%APPDATA%
-pm`. That folder must be on PATH, which the
+On Windows the shims are written to `%APPDATA%\npm`. That folder must be on PATH, which the
 Node installer sets up by default. If PowerShell refuses `sherlock.ps1` because of its
 execution policy, run `sherlock.cmd`, or run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
@@ -114,12 +166,10 @@ sherlock eval fixtures/<name>/golden.json    # GOLDEN PASS at ≥ 85% concept re
 The golden-fixture tests (`apps/cli/test/grants-fixture.test.js`) and the editor e2e run
 (`npm run e2e -w @sherlock/editor`, workspace in `fixtures/grants/workspace/` or
 `SHERLOCK_E2E_WORKSPACE`) need that local data; the unit tests skip it when it's absent.
+Mock PDFs for the extraction tests are generated on first run and are gitignored too.
 
 Concepts match only when an entity names the specific behaviour (for example "restore" together with
-"exhibit"), not just the feature name. A real run with the skill on this PRD
-(145 requirements, 168 test cases, 49 gaps) scores 53/53 with 100% traceability.
-
-`npm test` covers the model logic, the CLI loop, and extraction and provenance on the real PRD.
+"exhibit"), not just the feature name.
 
 ## Editor development
 
