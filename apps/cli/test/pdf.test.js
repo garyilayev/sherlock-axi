@@ -9,11 +9,16 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractPrd } from '../src/prd/extract.js';
 import { resolveSection, verifySource } from '@sherlock/qa-model';
-import { makePdf } from './fixtures/make-pdf.js';
+import { makePdf, SAMPLE_PRD, NO_HEADINGS } from './fixtures/make-pdf.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FIX = path.join(here, 'fixtures');
 const BIN = path.resolve(here, '../bin/sherlock.js');
+
+// Mock PDFs are gitignored; generate them on first run.
+for (const [name, pages] of [['sample-prd.pdf', SAMPLE_PRD], ['no-headings.pdf', NO_HEADINGS]]) {
+  if (!fs.existsSync(path.join(FIX, name))) fs.writeFileSync(path.join(FIX, name), makePdf(pages));
+}
 
 test('numbered headings become sections across pages', async () => {
   const prd = await extractPrd(path.join(FIX, 'sample-prd.pdf'));

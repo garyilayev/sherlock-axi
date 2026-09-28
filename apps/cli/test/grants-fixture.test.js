@@ -1,5 +1,6 @@
-// Golden fixture: the real Grants Module PRD (Hebrew .docx) + its human QA guide.
-import { test } from 'node:test';
+// Golden fixture: a real PRD (Hebrew .docx) + its human QA guide. The data is
+// local only (fixtures/ is gitignored), so these tests skip when it's absent.
+import { test as nodeTest } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,8 +9,10 @@ import { extractPrd } from '../src/prd/extract.js';
 import { evaluateGolden, verifySource, resolveSection } from '@sherlock/qa-model';
 
 const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../fixtures/grants');
-const golden = JSON.parse(fs.readFileSync(path.join(dir, 'golden.json'), 'utf8'));
-const prd = await extractPrd(path.join(dir, golden.prd));
+const available = fs.existsSync(path.join(dir, 'golden.json'));
+const golden = available ? JSON.parse(fs.readFileSync(path.join(dir, 'golden.json'), 'utf8')) : null;
+const prd = available ? await extractPrd(path.join(dir, golden.prd)) : null;
+const test = (name, fn) => nodeTest(name, { skip: !available && 'local fixture fixtures/grants not present' }, fn);
 
 test('docx extraction: every section the QA guide relies on is present', () => {
   for (const id of golden.prdSections) assert.ok(resolveSection(prd, id), `§${id} missing`);
