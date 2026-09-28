@@ -103,12 +103,17 @@ concatenate and `project` merges. This is how a large model gets written and fix
 
 ## Golden fixture
 
-`fixtures/grants/` holds the real Grants Module PRD (Hebrew .docx) and its human-written QA
-Guide. `golden.json` lists the QA concepts the guide covers. After Claude generates a model:
+Real PRDs and their QA guides are local only: `fixtures/` is gitignored and never committed.
+Put a golden set in `fixtures/<name>/` (the PRD, its human-written QA guide, and a `golden.json`
+listing the QA concepts the guide covers). After Claude generates a model:
 
 ```bash
-sherlock eval fixtures/grants/golden.json    # GOLDEN PASS at ≥ 85% concept recall
+sherlock eval fixtures/<name>/golden.json    # GOLDEN PASS at ≥ 85% concept recall
 ```
+
+The golden-fixture tests (`apps/cli/test/grants-fixture.test.js`) and the editor e2e run
+(`npm run e2e -w @sherlock/editor`, workspace in `fixtures/grants/workspace/` or
+`SHERLOCK_E2E_WORKSPACE`) need that local data; the unit tests skip it when it's absent.
 
 Concepts match only when an entity names the specific behaviour (for example "restore" together with
 "exhibit"), not just the feature name. A real run with the skill on this PRD
