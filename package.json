@@ -8,7 +8,8 @@
   "scripts": {
     "build": "npm run build -w @sherlock/editor",
     "dev:editor": "npm run dev -w @sherlock/editor",
-    "test": "node --test \"packages/*/test/*.test.js\" \"apps/cli/test/*.test.js\"",
+    "test": "node --test \"packages/*/test/*.test.js\" \"apps/cli/test/*.test.js\" \"apps/editor/src/*/*.test.js\"",
+    "lint:i18n": "npm run lint:i18n -w @sherlock/editor",
     "setup": "node apps/cli/bin/sherlock.js setup"
   },
   "engines": { "node": ">=18.17" }

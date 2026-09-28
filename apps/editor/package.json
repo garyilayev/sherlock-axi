@@ -6,12 +6,18 @@
   "scripts": {
     "dev": "next dev -p 4871",
     "build": "next build",
-    "lint": "next lint"
+    "lint": "next lint",
+    "lint:i18n": "node scripts/lint-i18n.mjs",
+    "test": "node --test \"src/*/*.test.js\"",
+    "e2e": "playwright test"
   },
   "dependencies": {
+    "@sherlock/qa-model": "0.1.0",
     "next": "^15.5.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "@sherlock/qa-model": "0.1.0"
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }
