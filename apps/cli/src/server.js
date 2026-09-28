@@ -22,10 +22,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const EDITOR_DIR = process.env.SHERLOCK_EDITOR_DIR || path.resolve(here, '../../editor/out');
 
 const TYPES = {
-  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json',
+  '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8', '.map': 'application/json',
 };
+
+class HttpError extends Error {
+  constructor(status, code, message) { super(message ?? code); this.status = status; this.code = code; }
+}
 
 export function buildState(ws) {
   const model = ws.model({ required: false });
@@ -52,26 +57,42 @@ function send(res, status, body) {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (c) => { data += c; if (data.length > 1e6) req.destroy(); });
-    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch (e) { reject(e); } });
+    req.setEncoding('utf8'); // decode across chunk boundaries (Hebrew is multi-byte)
+    req.on('data', (c) => {
+      data += c;
+      if (data.length > 1e6) { reject(new HttpError(413, 'BODY_TOO_LARGE')); req.destroy(); }
+    });
+    req.on('end', () => {
+      try { resolve(data ? JSON.parse(data) : {}); } catch { reject(new HttpError(400, 'BAD_JSON', 'request body is not valid JSON')); }
+    });
     req.on('error', reject);
   });
 }
 
+const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
+
 function serveStatic(req, res) {
-  const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  let file = path.join(EDITOR_DIR, url);
-  if (!file.startsWith(EDITOR_DIR)) return send(res, 403, { error: 'FORBIDDEN' });
-  if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
-  if (!fs.existsSync(file) && fs.existsSync(`${file}.html`)) file = `${file}.html`;
-  if (!fs.existsSync(file)) file = path.join(EDITOR_DIR, 'index.html');
-  if (!fs.existsSync(file)) {
-    res.writeHead(503, { 'content-type': 'text/plain' });
+  let url;
+  try { url = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { return send(res, 400, { error: 'BAD_PATH' }); }
+  const root = path.resolve(EDITOR_DIR);
+  let file = path.resolve(root, `.${url}`);
+  if (file !== root && !file.startsWith(root + path.sep)) return send(res, 403, { error: 'FORBIDDEN' });
+  if (!isFile(file)) {
+    if (isFile(path.join(file, 'index.html'))) file = path.join(file, 'index.html');
+    else if (isFile(`${file}.html`)) file = `${file}.html`;
+    // A missing asset is a 404. Serving index.html instead would make the
+    // browser parse HTML as JS after a rebuild and fail with a cryptic error.
+    else if (url.startsWith('/_next/') || path.extname(url)) return send(res, 404, { error: 'NOT_FOUND' });
+    else file = path.join(root, 'index.html'); // SPA fallback (routing is hash-based anyway)
+  }
+  if (!isFile(file)) {
+    res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' });
     return res.end('Sherlock editor is not built. Run: npm run build');
   }
   res.writeHead(200, {
-    'content-type': TYPES[path.extname(file)] || 'application/octet-stream',
-    'cache-control': file.includes(`${path.sep}_next${path.sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
+    // Hashed build assets never change; HTML must revalidate so a rebuild is picked up.
+    'cache-control': url.startsWith('/_next/static/') ? 'public, max-age=31536000, immutable' : 'no-cache',
   });
   fs.createReadStream(file).pipe(res);
 }
@@ -87,15 +108,22 @@ export function createServer(dir) {
     for (const c of clients) c.write(msg);
   };
 
+  let first = 0;
+  const flush = () => {
+    timer = null;
+    broadcast('change', { files: [...pending] });
+    pending = new Set();
+  };
   const watcher = fs.watch(dir, (_, name) => {
-    if (!name || name.endsWith('.tmp') || name === 'server.json' || name === 'state.json') return;
+    if (!name || /\.(tmp|lock|log)$/.test(name) || name === 'server.json' || name === 'state.json') return;
+    if (!pending.size) first = Date.now();
     pending.add(name);
     clearTimeout(timer);
-    timer = setTimeout(() => {
-      broadcast('change', { files: [...pending] });
-      pending = new Set();
-    }, 120);
+    // Debounce bursts (a CLI update writes several files), but never delay more than 500ms.
+    timer = setTimeout(flush, Math.max(0, Math.min(120, first + 500 - Date.now())));
   });
+  // Windows raises EPERM here when the workspace folder is deleted; don't crash.
+  watcher.on('error', () => {});
   const heartbeat = setInterval(() => broadcast('ping', { t: Date.now() }), 25_000);
 
   const server = http.createServer(async (req, res) => {
@@ -117,24 +145,29 @@ export function createServer(dir) {
         const target = body.targetId || 'project';
         if (target !== 'project' && !kindOfId(target)) return send(res, 400, { error: 'BAD_TARGET' });
         if (!String(body.message || '').trim()) return send(res, 400, { error: 'EMPTY_MESSAGE' });
-        const list = ws.feedback();
-        const fb = newFeedback(list, { ...body, targetId: target, revision: ws.project().revision ?? null, model });
-        ws.write('feedback.json', [...list, fb]);
+        const revision = ws.project().revision ?? null;
+        const fb = ws.mutate('feedback.json', [], (list) => {
+          const created = newFeedback(list, { ...body, targetId: target, revision, model });
+          return { value: [...list, created], result: created };
+        });
         return send(res, 201, fb);
       }
       const m = pathname.match(/^\/api\/feedback\/(FB-\d+)$/);
       if (m && req.method === 'PATCH') {
         const body = await readBody(req);
-        const list = ws.feedback();
-        const idx = list.findIndex((f) => f.id === m[1]);
-        if (idx < 0) return send(res, 404, { error: 'NOT_FOUND' });
-        list[idx] = updateFeedback(list[idx], { ...body, author: 'qa' });
-        ws.write('feedback.json', list);
-        return send(res, 200, list[idx]);
+        const fb = ws.mutate('feedback.json', [], (list) => {
+          const idx = list.findIndex((f) => f.id === m[1]);
+          if (idx < 0) return { value: list, result: null };
+          const next = [...list];
+          next[idx] = updateFeedback(list[idx], { status: body.status, message: body.message, author: 'qa' });
+          return { value: next, result: next[idx] };
+        });
+        return fb ? send(res, 200, fb) : send(res, 404, { error: 'NOT_FOUND' });
       }
       if (pathname.startsWith('/api/')) return send(res, 404, { error: 'NOT_FOUND' });
       return serveStatic(req, res);
     } catch (e) {
+      if (e instanceof HttpError) return send(res, e.status, { error: e.code, message: e.message });
       return send(res, 500, { error: 'INTERNAL', message: e.message });
     }
   });

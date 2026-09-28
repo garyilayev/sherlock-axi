@@ -36,7 +36,8 @@ function markdownToBlocks(src) {
 async function pdfLines(file) {
   try {
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-    const doc = await pdfjs.getDocument({ data: new Uint8Array(fs.readFileSync(file)), useSystemFonts: true }).promise;
+    // verbosity 0: pdfjs otherwise prints warnings to stdout, breaking the CLI's output contract.
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(fs.readFileSync(file)), useSystemFonts: true, verbosity: 0 }).promise;
     const pages = [];
     for (let i = 1; i <= doc.numPages; i++) {
       const content = await (await doc.getPage(i)).getTextContent();

@@ -16,6 +16,25 @@ import { AxiError, EXIT } from './axi.js';
 
 export const DIRNAME = '.sherlock';
 
+/** Path equality that respects Windows' case-insensitive file system. */
+export function samePath(a, b) {
+  const x = path.resolve(a), y = path.resolve(b);
+  return process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y;
+}
+
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+// Windows briefly refuses reads/renames while another process (the server,
+// an editor, antivirus, the indexer) holds the file open.
+const TRANSIENT = new Set(['EPERM', 'EBUSY', 'EACCES']);
+function retrying(fn, attempts = 80) {
+  for (let i = 0; ; i++) {
+    try { return fn(); } catch (e) {
+      if (i >= attempts || !TRANSIENT.has(e.code)) throw e;
+      sleepSync(25);
+    }
+  }
+}
+
 export function findWorkspace(hint, { mustExist = true } = {}) {
   let dir = null;
   if (hint) {
@@ -60,9 +79,15 @@ export class Workspace {
 
   read(name, fallback = undefined) {
     const file = this.p(name);
-    if (!fs.existsSync(file)) return fallback;
+    let raw;
     try {
-      return JSON.parse(fs.readFileSync(file, 'utf8'));
+      raw = retrying(() => fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+      if (e.code === 'ENOENT') return fallback;
+      throw e;
+    }
+    try {
+      return JSON.parse(raw);
     } catch (e) {
       throw new AxiError('CORRUPT_JSON', `${name} is not valid JSON: ${e.message}`, {
         fields: { File: this.rel(file) }, exit: EXIT.INVALID,
@@ -70,16 +95,46 @@ export class Workspace {
     }
   }
 
+  /** Atomic write: temp file + rename, so readers never see a half-written file. */
   write(name, data) {
     fs.mkdirSync(path.dirname(this.p(name)), { recursive: true });
-    const tmp = this.p(`${name}.${process.pid}.tmp`);
+    const tmp = this.p(`${name}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`);
     fs.writeFileSync(tmp, typeof data === 'string' ? data : `${JSON.stringify(data, null, 2)}\n`);
-    // Windows can briefly refuse the rename while a watcher/reader holds the file.
-    for (let i = 0; ; i++) {
-      try { fs.renameSync(tmp, this.p(name)); break; } catch (e) {
-        if (i >= 20 || !['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) throw e;
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    try {
+      retrying(() => fs.renameSync(tmp, this.p(name)));
+    } catch (e) {
+      fs.rmSync(tmp, { force: true });
+      throw e;
+    }
+  }
+
+  /**
+   * Read-modify-write under a lock file. The CLI (Claude) and the server (QA
+   * in the browser) both change feedback.json; without the lock one side's
+   * write can silently drop the other's.
+   */
+  mutate(name, fallback, fn) {
+    const lock = this.p(`${name}.lock`);
+    fs.mkdirSync(this.dir, { recursive: true });
+    let fd = null;
+    for (let i = 0; fd === null; i++) {
+      try {
+        fd = fs.openSync(lock, 'wx');
+      } catch (e) {
+        if (e.code !== 'EEXIST' && !TRANSIENT.has(e.code)) throw e;
+        // A lock older than 10s belongs to a crashed process.
+        try { if (Date.now() - fs.statSync(lock).mtimeMs > 10_000) fs.rmSync(lock, { force: true }); } catch {}
+        if (i > 400) throw new AxiError('WORKSPACE_LOCKED', `${name} is locked by another process.`, { fields: { Lock: this.rel(lock) }, next: ['retry, or delete the .lock file if no Sherlock process is running'], exit: EXIT.SERVER });
+        sleepSync(10);
       }
+    }
+    try {
+      const out = fn(this.read(name, fallback));
+      this.write(name, out.value);
+      return out.result;
+    } finally {
+      fs.closeSync(fd);
+      retrying(() => fs.rmSync(lock, { force: true }));
     }
   }
 

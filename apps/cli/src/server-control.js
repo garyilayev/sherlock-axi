@@ -6,6 +6,7 @@ import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { AxiError, EXIT } from './axi.js';
 import { EDITOR_DIR } from './server.js';
+import { samePath } from './workspace.js';
 
 const SERVER_JS = path.join(path.dirname(fileURLToPath(import.meta.url)), 'server.js');
 export const DEFAULT_PORT = 4870;
@@ -14,20 +15,22 @@ const alive = (pid) => {
   try { process.kill(pid, 0); return true; } catch { return false; }
 };
 
+/** The pid of the healthy server that owns `dir`, or null. */
 async function health(url, dir) {
   try {
     const res = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(800) });
     const body = await res.json();
-    return body.ok && path.resolve(body.dir) === path.resolve(dir);
+    // Case-insensitive on Windows: `cd e:\proj` and `cd E:\Proj` are the same workspace.
+    return body.ok && samePath(body.dir, dir) ? body.pid : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
 export async function runningServer(ws) {
   const info = ws.read('server.json', null);
   if (!info || !alive(info.pid)) return null;
-  return (await health(info.url, ws.dir)) ? info : null;
+  return (await health(info.url, ws.dir)) === info.pid ? info : null;
 }
 
 function portFree(port) {
@@ -62,11 +65,13 @@ export async function ensureServer(ws, { port } = {}) {
     windowsHide: true,
   });
   child.unref();
+  fs.closeSync(log); // the child has its own handle; ours would keep the log locked on Windows
 
   const url = `http://localhost:${p}`;
   for (let i = 0; i < 50; i++) {
     await new Promise((r) => setTimeout(r, 100));
     if (await health(url, ws.dir)) return { pid: child.pid, port: p, url, reused: false };
+    if (child.exitCode !== null) break;
   }
   throw new AxiError('SERVER_START_FAILED', 'Local server did not become healthy within 5s.', {
     fields: { Log: ws.rel(ws.p('server.log')) },
@@ -77,27 +82,34 @@ export async function ensureServer(ws, { port } = {}) {
 
 export async function stopServer(ws) {
   const info = ws.read('server.json', null);
-  if (!info || !alive(info.pid)) {
-    if (info) fs.rmSync(ws.p('server.json'), { force: true });
-    return false;
+  if (!info) return false;
+  // Only kill a process that proves it is this workspace's server: Windows
+  // reuses pids quickly, and a stale server.json must never kill a stranger.
+  const pid = alive(info.pid) ? await health(info.url, ws.dir) : null;
+  if (pid === info.pid) {
+    // On Windows this is TerminateProcess: the server's own SIGTERM cleanup
+    // does not run, so server.json is removed here.
+    process.kill(info.pid, 'SIGTERM');
+    for (let i = 0; i < 30 && alive(info.pid); i++) await new Promise((r) => setTimeout(r, 100));
   }
-  process.kill(info.pid, 'SIGTERM');
-  for (let i = 0; i < 20 && alive(info.pid); i++) await new Promise((r) => setTimeout(r, 100));
   fs.rmSync(ws.p('server.json'), { force: true });
-  return true;
+  return pid === info.pid;
 }
 
 /** Best-effort browser launch. Returns false when it can't (headless, CI). */
 export function openBrowser(url) {
   if (process.env.SHERLOCK_NO_BROWSER || process.env.CI) return Promise.resolve(false);
+  const win = process.platform === 'win32';
+  // Windows: `start "" "<url>"` — the empty title is required, and the args
+  // must reach cmd verbatim (Node's default quoting turns "" into "\"\"").
   const [cmd, args] =
     process.platform === 'darwin' ? ['open', [url]]
-      : process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', url.replace(/&/g, '^&')]]
+      : win ? ['cmd.exe', ['/d', '/s', '/c', `"start "" "${url.replace(/"/g, '%22')}""`]]
         : ['xdg-open', [url]];
   if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return Promise.resolve(false);
   return new Promise((resolve) => {
     try {
-      const c = execFile(cmd, args, { windowsHide: true }, (err) => resolve(!err));
+      const c = execFile(cmd, args, { windowsHide: true, windowsVerbatimArguments: win }, (err) => resolve(!err));
       c.on('error', () => resolve(false));
       setTimeout(() => resolve(true), 1500);
     } catch {

@@ -116,6 +116,24 @@ Every non-gap entity needs a `source`:
 Sherlock checks every excerpt against the PRD text. Unverifiable quotes are shown to
 the QA as source issues, so fix any that `create`/`update` warns about.
 
+**Cite the deepest anchor above the words you quote.** Text under `### [§5.1/1]` belongs
+to §5.1/1, not §5.1. A quote from a sub-heading's body cited to its parent comes back as
+`SOURCE_SECTION_MISMATCH` (the warning names the right section: use it).
+
+Good and bad excerpts:
+
+| | excerpt | why |
+|---|---|---|
+| ✅ | `"לא שלילי. יכול להיות 0"` (§3.8) | short, verbatim, the exact rule under test |
+| ✅ | `"Actions \| צהוב \| מספר המשימות הפתוחות"` | a table row: cells joined by `\|` still verify |
+| ✅ | `"Void (5.4)… Add to Exhibit (5.7)"` | `…` joins two fragments of one section |
+| ❌ | `"Grant Price must be non-negative"` | a translation or paraphrase, not a quote |
+| ❌ | a whole paragraph | too long to review; quote the 5–25 words that matter |
+| ❌ | a heading cited as the parent of its own sub-section's text | wrong section id |
+
+In JSON, escape double quotes inside strings (`\"`). Hebrew abbreviations use them
+constantly (ע\"פ, מע\"מ), and an unescaped one breaks the whole file.
+
 Use `notes` to explain your reasoning on derived, inferred or ambiguous items. It
 appears in the inspector as "Notes", and it answers the QA's question "why did Sherlock
 generate this?"
@@ -181,8 +199,31 @@ Any string value that is a valid ID (for example in `requirementIds`, `screenIds
 ID that does not exist is an error. Write the descriptive text in the PRD's language;
 IDs, field names and enum values stay in English.
 
-For a large PRD, write the model in parts: requirements and screens first, then the
-rest. Keep the JSON valid at every step.
+#### Large PRDs: write the model in parts
+
+Don't write a big model as one file. Write part files into `.sherlock/parts/`. They are
+merged in name order: arrays concatenate, `project` merges.
+
+```
+.sherlock/parts/00-project.json        { "project": { … } }
+.sherlock/parts/01-gaps.json           { "gaps": [ … ] }        ← first: everything else links to them
+.sherlock/parts/02-requirements.json
+.sherlock/parts/03-screens-flows-actions.json
+.sherlock/parts/04-checks.json         validations, businessRules, states, permissions
+.sherlock/parts/05-tests-a.json        testCases, split by PRD area
+.sherlock/parts/06-tests-b.json
+```
+
+Run `sherlock validate .sherlock/parts` after each part, before you write the tests.
+It catches bad quotes early, while they are cheap to fix. Then run
+`sherlock create .sherlock/parts`. The CLI accepts the directory wherever it accepts a
+model file.
+
+Rough sizing, from a real 10.6k-word Hebrew PRD (245 sections): ~145 requirements,
+~30 screens, ~10 flows, ~30 validations, ~30 rules, ~165 test cases and ~48 gaps. That
+is about one requirement per testable statement, a little over one test per
+requirement, and one gap per row of the PRD's open-questions appendix plus the
+contradictions you find. A 2-page PRD should be a fraction of that. Don't pad it.
 
 ### 8. Create, open and report
 
@@ -248,6 +289,24 @@ sherlock update .sherlock/patch.json --resolve FB-001,FB-002 --note "Fixed expec
 
 The browser refreshes itself after every update. Summarize to the user in 1–3 lines,
 then keep polling if they are still reviewing.
+
+## Common mistakes
+
+- **Missing contradictions.** Compare every "X only" and "all except Y" statement with
+  the tables and menus elsewhere in the PRD. Real example: "Duplicate: row menu in Draft
+  only" versus a Pending Board row menu that lists Duplicate. Each contradiction is a
+  GAP, and the affected requirement is `ambiguous` with `gapIds`.
+- **Skipping the open-questions appendix.** Each row becomes its own GAP, cited to that
+  appendix section.
+- **Unlinked checks.** Each VAL/RULE needs at least one test that lists it in
+  `validationIds`/`ruleIds`. Otherwise its requirement shows as *partial*.
+- **Vague tests.** "Verify the filter works" isn't a test. Use concrete data and the
+  boundary: "Grant Date = today − 30 → '15 days left' in red; − 29 → '16 days left' in
+  turquoise".
+- **Arrow chains in RTL text.** In Hebrew titles, `A → B → C` renders reversed. Put
+  sequences in `steps`, or use `←` in RTL text.
+- **Answering feedback in the wrong language.** Reply (`--note`) in the language the QA
+  wrote in.
 
 ## Rules of thumb
 

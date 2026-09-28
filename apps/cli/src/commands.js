@@ -33,6 +33,30 @@ function readJsonFile(file) {
   }
 }
 
+/**
+ * A model file, or a directory of part files (e.g. .sherlock/parts/) merged in
+ * name order: arrays concatenate, objects shallow-merge. Large PRDs are easier
+ * to write, fix and review as several smaller JSON files.
+ */
+function readModelInput(file) {
+  const abs = path.resolve(file);
+  if (file === '-' || !fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) return readJsonFile(file);
+  const parts = fs.readdirSync(abs).filter((f) => f.endsWith('.json')).sort();
+  if (!parts.length) {
+    throw new AxiError('NO_PARTS', 'The directory has no .json part files.', { fields: { Dir: file }, next: ['write parts like 01-requirements.json, 02-screens.json …'], exit: EXIT.NOT_FOUND });
+  }
+  const model = {};
+  for (const name of parts) {
+    const part = readJsonFile(path.join(file, name));
+    for (const [k, v] of Object.entries(part)) {
+      if (Array.isArray(v)) model[k] = [...(Array.isArray(model[k]) ? model[k] : []), ...v];
+      else if (v && typeof v === 'object') model[k] = { ...model[k], ...v };
+      else model[k] = v;
+    }
+  }
+  return model;
+}
+
 function assertValid(result, file) {
   if (result.ok) return;
   throw new AxiError('MODEL_INVALID', `${result.errors.length} error(s) — nothing was written.`, {
@@ -169,7 +193,7 @@ export async function analyze({ positional: [file], flags }) {
 export async function create({ positional: [file], flags }) {
   if (!file) throw new AxiError('USAGE', 'Missing model path.', { next: ['sherlock create <model.json>'] });
   const ws = findWorkspace(flags.dir ?? file);
-  const model = readJsonFile(file);
+  const model = readModelInput(file);
   if (ws.exists('model.json') && !flags.force) {
     throw new AxiError('MODEL_EXISTS', 'Workspace already has a QA model.', {
       fields: { Workspace: ws.rel(ws.dir) },
@@ -202,7 +226,7 @@ export async function update({ positional: [file], flags }) {
   if (!file) throw new AxiError('USAGE', 'Missing model or patch path.', { next: ['sherlock update <model.json|patch.json|->'] });
   const ws = findWorkspace(flags.dir);
   const prev = ws.model();
-  const doc = readJsonFile(file);
+  const doc = readModelInput(file);
   let next;
   if (isPatch(doc)) {
     const r = applyPatch(prev, doc);
@@ -223,6 +247,10 @@ export async function update({ positional: [file], flags }) {
   const changedIds = [...diff.added, ...diff.modified, ...diff.removed];
   const resolveIds = flags.resolve ? String(flags.resolve).split(',').map((s) => s.trim()).filter(Boolean) : [];
 
+  const unknown = resolveIds.filter((id) => !ws.feedback().some((f) => f.id === id));
+  if (unknown.length) {
+    throw new AxiError('FEEDBACK_NOT_FOUND', `Unknown feedback id(s): ${unknown.join(', ')} — nothing was written.`, { next: ['sherlock feedback --all'], exit: EXIT.NOT_FOUND });
+  }
   if (!changedIds.length && !diff.projectChanged && !resolveIds.length) {
     emit({ title: 'NO CHANGES', fields: [['REVISION', ws.project().revision]], next: [] });
     return;
@@ -261,7 +289,7 @@ export async function validate({ positional: [file], flags }) {
   const ws = findWorkspace(flags.dir ?? file, { mustExist: false });
   const target = file ?? ws?.p('model.json');
   if (!target) throw new AxiError('USAGE', 'Missing model path.', { next: ['sherlock validate <model.json>'] });
-  let model = readJsonFile(target);
+  let model = readModelInput(target);
   if (isPatch(model)) model = applyPatch(ws.model(), model).model;
   const result = validateModel(model, { prd: ws?.prd() ?? null });
   emit({
@@ -462,16 +490,16 @@ export async function poll({ flags }) {
 }
 
 function resolveFeedback(ws, ids, { note, status = 'resolved', changedIds = [], revision = null }) {
-  const list = ws.feedback();
-  const missing = ids.filter((id) => !list.some((f) => f.id === id));
-  if (missing.length) {
-    throw new AxiError('FEEDBACK_NOT_FOUND', `Unknown feedback id(s): ${missing.join(', ')}`, { next: ['sherlock feedback --all'], exit: EXIT.NOT_FOUND });
-  }
-  const next = list.map((f) => (ids.includes(f.id)
-    ? updateFeedback(f, { status, message: note ?? (status === 'resolved' ? 'Resolved.' : 'Dismissed.'), author: 'claude', changedIds, revision })
-    : f));
-  ws.write('feedback.json', next);
-  return ids;
+  return ws.mutate('feedback.json', [], (list) => {
+    const missing = ids.filter((id) => !list.some((f) => f.id === id));
+    if (missing.length) {
+      throw new AxiError('FEEDBACK_NOT_FOUND', `Unknown feedback id(s): ${missing.join(', ')}`, { next: ['sherlock feedback --all'], exit: EXIT.NOT_FOUND });
+    }
+    const value = list.map((f) => (ids.includes(f.id)
+      ? updateFeedback(f, { status, message: note ?? (status === 'resolved' ? 'Resolved.' : 'Dismissed.'), author: 'claude', changedIds, revision })
+      : f));
+    return { value, result: ids };
+  });
 }
 
 export async function resolve({ positional: ids, flags }) {
@@ -491,7 +519,7 @@ export async function resolve({ positional: ids, flags }) {
 // ---------------------------------------------------------------- eval (golden regression)
 
 export async function evalGolden({ positional: [goldenFile, modelFile], flags }) {
-  if (!goldenFile) throw new AxiError('USAGE', 'Missing golden fixture path.', { next: ['sherlock eval fixtures/grants/golden.json [model.json]'] });
+  if (!goldenFile) throw new AxiError('USAGE', 'Missing golden fixture path.', { next: ['sherlock eval fixtures/<name>/golden.json [model.json]'] });
   const golden = readJsonFile(goldenFile);
   const ws = modelFile ? null : findWorkspace(flags.dir);
   const model = modelFile ? readJsonFile(modelFile) : ws.model();
@@ -542,10 +570,11 @@ PRD
   analyze <prd>            extract .docx/.pdf/.md → .sherlock/prd.md (+ section index)
 
 MODEL
-  create <model.json>      validate + install the first QA model
-  update <file|->          apply full model or patch {upsert,merge,remove,project}
+  create <model.json|dir>  validate + install the first QA model
+                           (a dir of part files is merged in name order)
+  update <file|dir|->      apply full model or patch {upsert,merge,remove,project}
          [--resolve FB-1,FB-2 --note "…"]
-  validate [file]          dry-run validation (errors, warnings, source checks)
+  validate [file|dir]      dry-run validation (errors, warnings, source checks)
   inspect                  compact status: counts, coverage, traceability, review state
   show <ID…>               one entity with links, coverage, source check, feedback
 

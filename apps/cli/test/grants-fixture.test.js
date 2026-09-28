@@ -1,5 +1,6 @@
-// Golden fixture: the real Grants Module PRD (Hebrew .docx) + its human QA guide.
-import { test } from 'node:test';
+// Golden fixture: a real PRD (Hebrew .docx) + its human QA guide. The data is
+// local only (fixtures/ is gitignored), so these tests skip when it's absent.
+import { test as nodeTest } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,8 +9,10 @@ import { extractPrd } from '../src/prd/extract.js';
 import { evaluateGolden, verifySource, resolveSection } from '@sherlock/qa-model';
 
 const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../fixtures/grants');
-const golden = JSON.parse(fs.readFileSync(path.join(dir, 'golden.json'), 'utf8'));
-const prd = await extractPrd(path.join(dir, golden.prd));
+const available = fs.existsSync(path.join(dir, 'golden.json'));
+const golden = available ? JSON.parse(fs.readFileSync(path.join(dir, 'golden.json'), 'utf8')) : null;
+const prd = available ? await extractPrd(path.join(dir, golden.prd)) : null;
+const test = (name, fn) => nodeTest(name, { skip: !available && 'local fixture fixtures/grants not present' }, fn);
 
 test('docx extraction: every section the QA guide relies on is present', () => {
   for (const id of golden.prdSections) assert.ok(resolveSection(prd, id), `§${id} missing`);
@@ -37,7 +40,7 @@ test('golden evaluator scores concept recall', () => {
   const model = {
     project: { name: 'Grants' },
     requirements: [
-      { id: 'REQ-001', title: 'Void', description: 'Void a Draft grant; Show Voided + Restore' },
+      { id: 'REQ-001', title: 'Void', description: 'Void a Draft grant; Show Voided + Restore (back under its exhibit)' },
       { id: 'REQ-002', title: 'Grant Price', description: 'Grant Price לא שלילי, יכול להיות 0' },
     ],
     gaps: Array.from({ length: 5 }, (_, i) => ({ id: `GAP-00${i + 1}`, question: '?' })),
@@ -46,4 +49,14 @@ test('golden evaluator scores concept recall', () => {
   const hit = (id) => r.concepts.find((c) => c.id === id).hit;
   assert.ok(hit('void') && hit('restore') && hit('show-voided') && hit('grant-price') && hit('open-questions'));
   assert.ok(!hit('delete-exhibit'));
+});
+
+test('golden concepts need the behaviour, not just the feature name', () => {
+  const names = ['Void', 'Restore', 'Distribute', 'Create Exhibit', 'Add to Exhibit', 'Edit', 'Board', 'Exercise Requests', 'Esc', 'Log'];
+  const model = { project: { name: 'x' }, requirements: names.map((t, i) => ({ id: `REQ-${String(i + 1).padStart(3, '0')}`, title: t })) };
+  const r = evaluateGolden(model, golden);
+  const hits = r.concepts.filter((c) => c.hit).map((c) => c.id);
+  for (const id of ['void', 'restore', 'distribute', 'create-exhibit', 'add-to-exhibit-hidden', 'edit-keeps-board', 'exercise-requests-visibility', 'popup-close', 'audit-log']) {
+    assert.ok(!hits.includes(id), `${id} matched a bare feature name`);
+  }
 });

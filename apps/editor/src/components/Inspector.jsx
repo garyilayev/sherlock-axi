@@ -1,8 +1,9 @@
 'use client';
 import { Fragment, useMemo } from 'react';
-import { Icon, ClassBadge, KindBadge, CoverageBadge, SourceBadge, IdChip, LinkedText } from './ui.jsx';
+import { Icon, ClassBadge, KindBadge, CoverageBadge, SourceBadge, IdChip, LinkedText, Bidi } from './ui.jsx';
 import { FeedbackPanel } from './Feedback.jsx';
-import { KINDS, CLASS_HELP, kindOfId, titleOf, dirOf } from '../lib/meta.js';
+import { kindOfId, titleOf, OPEN_GAP } from '../lib/meta.js';
+import { useI18n } from '../i18n/index.js';
 
 const HEAD_ICON = { flows: 'flowNodes', requirements: 'file', screens: 'monitor', testCases: 'checkSquare', gaps: 'warning' };
 const KNOWN = new Set([
@@ -22,12 +23,12 @@ function stepParts(s) {
 }
 
 function Steps({ steps, onOpen }) {
+  const parts = steps.map(stepParts);
   return (
     <ol className="steps">
-      {steps.map((s, i) => {
-        const p = stepParts(s);
+      {parts.map((p, i) => {
         return (
-          <li key={i} dir={dirOf(`${p.title} ${p.detail ?? ''}`)}>
+          <li key={i}>
             <span className="num">{i + 1}</span>
             <div>
               <LinkedText as="div" className="st" text={p.title} onOpen={onOpen} />
@@ -69,8 +70,8 @@ function RelList({ ids, byId, onOpen }) {
     <div className="rel-list">
       {ids.map((id) => (
         <button type="button" key={id} className="rel-item" onClick={() => onOpen(id)}>
-          <span className="rid">{id}</span>
-          <span className="t" dir={dirOf(titleOf(byId.get(id)?.e))}>{titleOf(byId.get(id)?.e)}</span>
+          <span className="rid" dir="ltr">{id}</span>
+          <Bidi className="t">{titleOf(byId.get(id)?.e)}</Bidi>
           <Icon name="chevronRight" size={14} className="chev" />
         </button>
       ))}
@@ -79,67 +80,68 @@ function RelList({ ids, byId, onOpen }) {
 }
 
 function KindDetails({ kind, e, onOpen }) {
+  const { t } = useI18n();
   const out = [];
-  if (kind === 'flows' && e.steps?.length) out.push(<Section key="steps" title="Flow Steps"><Steps steps={e.steps} onOpen={onOpen} /></Section>);
+  if (kind === 'flows' && e.steps?.length) out.push(<Section key="steps" title={t('inspector.flowSteps')}><Steps steps={e.steps} onOpen={onOpen} /></Section>);
   if (kind === 'testCases') {
-    if (e.preconditions?.length) out.push(<Section key="pre" title="Preconditions"><List items={e.preconditions} onOpen={onOpen} /></Section>);
-    if (e.testData) out.push(<Section key="data" title="Test Data"><LinkedText as="p" text={typeof e.testData === 'string' ? e.testData : JSON.stringify(e.testData)} onOpen={onOpen} /></Section>);
-    if (e.steps?.length) out.push(<Section key="steps" title="Test Steps"><Steps steps={e.steps} onOpen={onOpen} /></Section>);
-    if (e.expectedResult) out.push(<Section key="exp" title="Expected Result"><LinkedText as="div" className="expected" text={e.expectedResult} onOpen={onOpen} /></Section>);
+    if (e.preconditions?.length) out.push(<Section key="pre" title={t('inspector.preconditions')}><List items={e.preconditions} onOpen={onOpen} /></Section>);
+    if (e.testData) out.push(<Section key="data" title={t('inspector.testData')}><LinkedText as="p" text={typeof e.testData === 'string' ? e.testData : JSON.stringify(e.testData)} onOpen={onOpen} /></Section>);
+    if (e.steps?.length) out.push(<Section key="steps" title={t('inspector.testSteps')}><Steps steps={e.steps} onOpen={onOpen} /></Section>);
+    if (e.expectedResult) out.push(<Section key="exp" title={t('inspector.expectedResult')}><LinkedText as="div" className="expected" text={e.expectedResult} onOpen={onOpen} /></Section>);
   }
-  if (kind !== 'flows' && kind !== 'testCases' && e.steps?.length) out.push(<Section key="steps" title="Steps"><Steps steps={e.steps} onOpen={onOpen} /></Section>);
+  if (kind !== 'flows' && kind !== 'testCases' && e.steps?.length) out.push(<Section key="steps" title={t('inspector.steps')}><Steps steps={e.steps} onOpen={onOpen} /></Section>);
   const elements = e.elements ?? e.fields;
-  if (elements?.length) out.push(<Section key="el" title={kind === 'screens' ? 'Elements' : 'Fields'}><List items={elements} onOpen={onOpen} /></Section>);
+  if (elements?.length) out.push(<Section key="el" title={kind === 'screens' ? t('inspector.elements') : t('inspector.fields')}><List items={elements} onOpen={onOpen} /></Section>);
   if (Array.isArray(e.states) && e.states.length) {
-    out.push(<Section key="st" title="States"><div className="row wrap" style={{ gap: 6 }}>{e.states.map((s, i) => <span key={i} className="badge plain">{typeof s === 'string' ? s : s.name}</span>)}</div></Section>);
+    out.push(<Section key="st" title={t('inspector.states')}><div className="row wrap" style={{ gap: 6 }}>{e.states.map((s, i) => <Bidi key={i} className="badge plain">{typeof s === 'string' ? s : s.name}</Bidi>)}</div></Section>);
   }
   if (e.transitions?.length) {
     out.push(
-      <Section key="tr" title="Transitions">
+      <Section key="tr" title={t('inspector.transitions')}>
         <dl className="kv-grid">
-          {e.transitions.map((t, i) => (
+          {e.transitions.map((tr, i) => (
             <Fragment key={i}>
-              <dt className="nowrap">{t.from} → {t.to}</dt>
-              <dd><LinkedText text={t.trigger ?? t.action ?? ''} onOpen={onOpen} /></dd>
+              <dt className="nowrap"><Bidi>{tr.from}</Bidi> <Icon name="arrow" size={12} /> <Bidi>{tr.to}</Bidi></dt>
+              <dd><LinkedText text={tr.trigger ?? tr.action ?? ''} onOpen={onOpen} /></dd>
             </Fragment>
           ))}
         </dl>
       </Section>,
     );
   }
-  const rule = [e.field && ['Field', e.field], e.rule && ['Rule', e.rule], e.errorMessage && ['Error message', e.errorMessage], e.role && ['Role', e.role]].filter(Boolean);
+  const rule = [e.field && [t('inspector.field'), e.field], e.rule && [t('inspector.rule'), e.rule], e.errorMessage && [t('inspector.errorMessage'), e.errorMessage], e.role && [t('inspector.role'), e.role]].filter(Boolean);
   if (rule.length) {
     out.push(
-      <Section key="rule" title="Definition">
+      <Section key="rule" title={t('inspector.definition')}>
         <dl className="kv-grid">{rule.map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd><LinkedText text={v} onOpen={onOpen} /></dd></Fragment>)}</dl>
       </Section>,
     );
   }
   if (e.allowed?.length || e.denied?.length) {
     out.push(
-      <Section key="perm" title="Access">
-        {e.allowed?.length > 0 && <><div className="faint" style={{ fontSize: 12 }}>Allowed</div><List items={e.allowed} onOpen={onOpen} /></>}
-        {e.denied?.length > 0 && <><div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Denied</div><List items={e.denied} onOpen={onOpen} /></>}
+      <Section key="perm" title={t('inspector.access')}>
+        {e.allowed?.length > 0 && <><div className="faint" style={{ fontSize: 12 }}>{t('inspector.allowed')}</div><List items={e.allowed} onOpen={onOpen} /></>}
+        {e.denied?.length > 0 && <><div className="faint" style={{ fontSize: 12, marginTop: 8 }}>{t('inspector.denied')}</div><List items={e.denied} onOpen={onOpen} /></>}
       </Section>,
     );
   }
   if (kind === 'gaps') {
-    if (e.question && e.title) out.push(<Section key="q" title="Question"><LinkedText as="p" text={e.question} onOpen={onOpen} /></Section>);
-    if (e.impact) out.push(<Section key="imp" title="Why it matters"><LinkedText as="p" text={e.impact} onOpen={onOpen} /></Section>);
-    if (e.options?.length) out.push(<Section key="opt" title="Possible answers"><List items={e.options} onOpen={onOpen} /></Section>);
-    if (e.suggestedAnswer) out.push(<Section key="sug" title="Suggested default"><LinkedText as="p" text={e.suggestedAnswer} onOpen={onOpen} /></Section>);
-    if (e.answer) out.push(<Section key="ans" title="Answer"><LinkedText as="div" className="expected" text={e.answer} onOpen={onOpen} /></Section>);
+    if (e.question && e.title) out.push(<Section key="q" title={t('inspector.question')}><LinkedText as="p" text={e.question} onOpen={onOpen} /></Section>);
+    if (e.impact) out.push(<Section key="imp" title={t('inspector.impact')}><LinkedText as="p" text={e.impact} onOpen={onOpen} /></Section>);
+    if (e.options?.length) out.push(<Section key="opt" title={t('inspector.options')}><List items={e.options} onOpen={onOpen} /></Section>);
+    if (e.suggestedAnswer) out.push(<Section key="sug" title={t('inspector.suggested')}><LinkedText as="p" text={e.suggestedAnswer} onOpen={onOpen} /></Section>);
+    if (e.answer) out.push(<Section key="ans" title={t('inspector.answer')}><LinkedText as="div" className="expected" text={e.answer} onOpen={onOpen} /></Section>);
   }
   // Anything else Claude added — shown generically so nothing is hidden.
   const rest = Object.entries(e).filter(([k, v]) => !KNOWN.has(k) && !/Ids?$/.test(k) && v != null && v !== '' && !(Array.isArray(v) && !v.length));
   if (rest.length) {
     out.push(
-      <Section key="more" title="Details">
+      <Section key="more" title={t('inspector.details')}>
         <dl className="kv-grid">
           {rest.map(([k, v]) => (
             <Fragment key={k}>
               <dt>{k.replace(/([A-Z])/g, ' $1').toLowerCase()}</dt>
-              <dd>{Array.isArray(v) ? v.map((x) => (typeof x === 'object' ? JSON.stringify(x) : x)).join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd>
+              <dd className="bidi">{Array.isArray(v) ? v.map((x) => (typeof x === 'object' ? JSON.stringify(x) : x)).join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd>
             </Fragment>
           ))}
         </dl>
@@ -150,26 +152,27 @@ function KindDetails({ kind, e, onOpen }) {
 }
 
 function Trace({ id, links, byId, sectionId, onOpen, openPrd }) {
+  const { t } = useI18n();
   const l = links[id] || { out: [], in: [] };
   const parents = l.out.filter((x) => kindOfId(x.id) === 'requirements').map((x) => x.id);
   const children = l.in.map((x) => x.id);
   const node = (nid, self) => (
     <div className={`node ${self ? 'self' : ''}`} key={nid}>
       <IdChip id={nid} onOpen={self ? undefined : onOpen} />
-      <span dir={dirOf(titleOf(byId.get(nid)?.e))}>{titleOf(byId.get(nid)?.e)}</span>
+      <Bidi>{titleOf(byId.get(nid)?.e)}</Bidi>
     </div>
   );
   const selfTree = (
     <>
       {node(id, true)}
-      {children.length > 0 && <div className="children">{children.slice(0, 20).map((c) => node(c))}{children.length > 20 && <div className="faint">+{children.length - 20} more</div>}</div>}
+      {children.length > 0 && <div className="children">{children.slice(0, 20).map((c) => node(c))}{children.length > 20 && <div className="faint">{t('inspector.more', { count: children.length - 20 })}</div>}</div>}
     </>
   );
   return (
     <div className="trace">
       {sectionId && (
         <div className="node">
-          <button type="button" className="id-chip" onClick={() => openPrd(sectionId)}>§{sectionId}</button>
+          <button type="button" className="id-chip" dir="ltr" onClick={() => openPrd(sectionId)}>§{sectionId}</button>
           <span className="muted">PRD</span>
         </div>
       )}
@@ -183,6 +186,7 @@ function Trace({ id, links, byId, sectionId, onOpen, openPrd }) {
 }
 
 export default function Inspector({ id, state, byId, onOpen, onClose, openPrd, sendFeedback, patchFeedback }) {
+  const { t, tv, has } = useI18n();
   const hit = byId.get(id);
   const { analysis: a, prd, project, feedback } = state;
   const related = useMemo(() => {
@@ -197,15 +201,20 @@ export default function Inspector({ id, state, byId, onOpen, onClose, openPrd, s
   if (!hit) {
     return (
       <aside className="pane inspector">
-        <div className="insp-head"><div className="top"><h2>{id}</h2><button type="button" className="close" onClick={onClose} aria-label="Close"><Icon name="close" /></button></div></div>
-        <div className="insp-body"><p className="muted">This item no longer exists in the model (it may have been removed in the latest revision).</p></div>
+        <div className="insp-head"><div className="top"><h2 dir="ltr">{id}</h2><button type="button" className="close" onClick={onClose} aria-label={t('inspector.close')}><Icon name="close" /></button></div></div>
+        <div className="insp-body"><p className="muted">{t('inspector.missingEntity')}</p></div>
       </aside>
     );
   }
   const { kind, e } = hit;
   const v = a.provenance.perEntity[id] || { status: 'missing' };
   const cov = a.coverage.perRequirement[id];
-  const sectionId = v.sectionId ?? null;
+  // Inherited provenance (e.g. a test with source: { requirementId }) still
+  // traces to the PRD: use the section and quote of the entity it came through.
+  const via = v.status === 'inherited' && v.via ? byId.get(v.via)?.e : null;
+  const viaProv = via ? a.provenance.perEntity[via.id] : null;
+  const sectionId = v.sectionId ?? viaProv?.sectionId ?? null;
+  const quote = e.source?.excerpt ?? (viaProv?.sectionId ? via?.source?.excerpt : null);
   const section = sectionId && prd?.sections?.find((s) => s.id === sectionId);
   const lc = project?.lastChange;
   const changed = lc && lc.type !== 'create' && [...(lc.added || []), ...(lc.modified || [])].includes(id);
@@ -214,22 +223,22 @@ export default function Inspector({ id, state, byId, onOpen, onClose, openPrd, s
   const notes = e.notes ?? e.rationale;
 
   return (
-    <aside className="pane inspector" aria-label={`${id} details`}>
+    <aside className="pane inspector" aria-label={t('inspector.detailsAria', { id })}>
       <div className="insp-head">
         <div className="top">
           <Icon name={HEAD_ICON[kind] ?? kind} size={26} />
-          <h2 dir={dirOf(titleOf(e))}>{titleOf(e)}</h2>
-          <button type="button" className="close" onClick={onClose} aria-label="Close inspector"><Icon name="close" size={18} /></button>
+          <Bidi as="h2">{titleOf(e)}</Bidi>
+          <button type="button" className="close" onClick={onClose} aria-label={t('inspector.close')}><Icon name="close" size={18} /></button>
         </div>
         <div className="badges">
           <KindBadge kind={kind} />
           <ClassBadge value={e.classification} />
           {cov && <CoverageBadge status={cov.status} />}
-          {e.type && kind === 'testCases' && <span className="badge plain">{e.type}</span>}
-          {e.priority && <span className="badge plain">{e.priority}</span>}
-          {kind === 'gaps' && <span className={`badge ${['resolved', 'answered', 'closed'].includes(e.status) ? 'ok' : 'warn'}`}>{e.status ?? 'open'}</span>}
-          {changed && <span className="badge new">updated rev {lc.revision}</span>}
-          <span className="id-chip">{id}</span>
+          {e.type && kind === 'testCases' && <span className="badge plain">{tv('testType', e.type)}</span>}
+          {e.priority && <span className="badge plain">{tv('priority', e.priority)}</span>}
+          {kind === 'gaps' && <span className={`badge ${OPEN_GAP(e) ? 'warn' : 'ok'}`}>{tv('status.gap', e.status ?? 'open')}</span>}
+          {changed && <span className="badge new">{t('status.updatedRev', { rev: lc.revision })}</span>}
+          <IdChip id={id} />
         </div>
       </div>
 
@@ -239,13 +248,13 @@ export default function Inspector({ id, state, byId, onOpen, onClose, openPrd, s
         <KindDetails kind={kind} e={e} onOpen={onOpen} />
 
         {cov && (
-          <Section title="Coverage">
+          <Section title={t('inspector.coverage')}>
             <div className={`coverage-box ${cov.status}`}>
               <CoverageBadge status={cov.status} />
               <span>
-                {cov.tests.length} test{cov.tests.length === 1 ? '' : 's'}
-                {cov.untestedChecks.length > 0 && <> · untested: {cov.untestedChecks.map((c) => <IdChip key={c} id={c} onOpen={onOpen} />)}</>}
-                {cov.openGaps.length > 0 && <> · open gap: {cov.openGaps.map((g) => <IdChip key={g} id={g} onOpen={onOpen} />)}</>}
+                {cov.tests.length ? t('coverage.tests', { count: cov.tests.length }) : t('coverage.noTests')}
+                {cov.untestedChecks.length > 0 && <> · {t('coverage.untested')} {cov.untestedChecks.map((c) => <IdChip key={c} id={c} onOpen={onOpen} />)}</>}
+                {cov.openGaps.length > 0 && <> · {t('coverage.openGapLabel')} {cov.openGaps.map((g) => <IdChip key={g} id={g} onOpen={onOpen} />)}</>}
               </span>
             </div>
             {cov.tests.length > 0 && <div style={{ marginTop: 10 }}><RelList ids={cov.tests} byId={byId} onOpen={onOpen} /></div>}
@@ -253,61 +262,62 @@ export default function Inspector({ id, state, byId, onOpen, onClose, openPrd, s
         )}
 
         {reqs.length > 0 && (
-          <Section title="Related Requirements" icon="link">
+          <Section title={t('inspector.relatedRequirements')} icon="link">
             <RelList ids={reqs} byId={byId} onOpen={onOpen} />
           </Section>
         )}
 
         {otherGroups.length > 0 && (
-          <Section title={kind === 'requirements' ? 'Related Items' : 'Related'} icon={reqs.length ? undefined : 'link'}>
+          <Section title={kind === 'requirements' ? t('inspector.relatedItems') : t('inspector.related')} icon={reqs.length ? undefined : 'link'}>
             {otherGroups.filter(([k]) => !(cov && k === 'testCases')).map(([k, ids]) => (
               <div className="rel-group" key={k}>
-                <div className="gl">{KINDS[k]?.label}</div>
+                <div className="gl">{tv('nav', k)}</div>
                 <RelList ids={ids} byId={byId} onOpen={onOpen} />
               </div>
             ))}
           </Section>
         )}
 
-        <Section title="Source" icon="file" extra={<SourceBadge status={v.status} />}>
+        <Section title={t('inspector.source')} icon="file" extra={<SourceBadge status={v.status} />}>
           <div className="source-block">
             <Icon name="file" size={20} />
             <div className="grow">
-              <div className="doc">{e.source?.document ?? prd?.document ?? 'PRD'}</div>
+              <div className="doc bidi">{e.source?.document ?? prd?.document ?? 'PRD'}</div>
               {section ? (
                 <div className="loc">
-                  <button type="button" className="id-chip" onClick={() => openPrd(section.id)}>Section {section.id}</button>
-                  {' '}<span dir={dirOf(section.heading)}>{section.heading}</span>
+                  <button type="button" className="id-chip" onClick={() => openPrd(section.id)}>{t('source.section', { id: <bdi dir="ltr">{section.id}</bdi> })}</button>
+                  {' '}<Bidi>{section.heading}</Bidi>
                 </div>
-              ) : e.source?.section ? <div className="loc">Section {e.source.section}</div> : null}
-              {v.status === 'inherited' && <div className="loc">Traced via <IdChip id={v.via} onOpen={onOpen} /></div>}
-              {v.status === 'section-mismatch' && <div className="loc tone-warn">Quote found in §{v.foundIn}, not §{e.source?.section}</div>}
-              {v.status === 'missing' && <div className="loc tone-bad">No PRD source — ask Claude where this came from.</div>}
+              ) : e.source?.section ? <div className="loc">{t('source.section', { id: <bdi dir="ltr">{e.source.section}</bdi> })}</div> : null}
+              {v.status === 'inherited' && <div className="loc">{t('source.tracedVia')} <IdChip id={v.via} onOpen={onOpen} /></div>}
+              {v.status === 'section-mismatch' && <div className="loc tone-warn">{t('source.mismatch', { found: <bdi dir="ltr">{v.foundIn}</bdi>, cited: <bdi dir="ltr">{e.source?.section}</bdi> })}</div>}
+              {v.status === 'missing' && <div className="loc tone-bad">{t('source.missingHint')}</div>}
             </div>
           </div>
-          {e.source?.excerpt && <blockquote className="source-quote" dir={dirOf(e.source.excerpt)}>{e.source.excerpt}</blockquote>}
+          {quote && <Bidi as="blockquote" className="source-quote">{quote}</Bidi>}
+          {quote && !e.source?.excerpt && <div className="faint" style={{ fontSize: 12, marginTop: 4 }}>{t('inspector.quotedIn', { id: <bdi dir="ltr">{via.id}</bdi> })}</div>}
           {section && (
-            <button type="button" className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => openPrd(section.id, e.source?.excerpt)}>
-              View in PRD <Icon name="chevronRight" size={13} />
+            <button type="button" className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => openPrd(section.id, quote)}>
+              {t('source.viewInPrd')} <Icon name="chevronRight" size={13} />
             </button>
           )}
           <div className="info-box notes-box">
             <Icon name="message" size={16} />
             <div>
-              <div className="nt">Notes</div>
+              <div className="nt">{t('inspector.notes')}</div>
               {notes ? <LinkedText as="div" text={notes} onOpen={onOpen} /> : null}
               <div className={notes ? 'faint' : ''} style={notes ? { marginTop: 4, fontSize: 12 } : undefined}>
-                <b style={{ textTransform: 'capitalize' }}>{e.classification ?? 'Unclassified'}</b>: {CLASS_HELP[e.classification] ?? 'No classification set.'}
+                <b>{e.classification ? tv('classification', e.classification) : t('classification.unclassified')}</b>: {has(`classification.help.${e.classification}`) ? t(`classification.help.${e.classification}`) : t('classification.help.none')}
               </div>
             </div>
           </div>
         </Section>
 
-        <Section title="Traceability" icon="flows">
+        <Section title={t('inspector.traceability')} icon="flows">
           <Trace id={id} links={a.links} byId={byId} sectionId={sectionId} onOpen={onOpen} openPrd={openPrd} />
         </Section>
 
-        <Section title="Feedback" icon="message">
+        <Section title={t('inspector.feedback')} icon="message">
           <FeedbackPanel targetId={id} kind={kind} feedback={feedback} onSend={sendFeedback} onPatch={patchFeedback} onOpen={onOpen} />
         </Section>
       </div>

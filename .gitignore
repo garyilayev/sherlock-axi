@@ -2,3 +2,9 @@ node_modules
 apps/editor/.next
 apps/editor/out
 .sherlock
+apps/editor/e2e/.results/
+
+# Real PRDs and generated models are local only, never committed
+/fixtures/
+# Mock data is generated or local, never committed
+apps/cli/test/fixtures/*.pdf
