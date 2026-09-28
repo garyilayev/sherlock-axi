@@ -2,6 +2,8 @@
 
 Turn PRDs into traceable QA guides with Claude Code: local-first, with an editor in English and Hebrew.
 
+![Sherlock demo: running sherlock analyze and sherlock open on a PRD, then browsing the QA guide](docs/assets/sherlock-demo.gif)
+
 ## Overview
 
 Sherlock turns a product requirements document (PRD) into a QA guide you can review and trace
