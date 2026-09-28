@@ -519,7 +519,7 @@ export async function resolve({ positional: ids, flags }) {
 // ---------------------------------------------------------------- eval (golden regression)
 
 export async function evalGolden({ positional: [goldenFile, modelFile], flags }) {
-  if (!goldenFile) throw new AxiError('USAGE', 'Missing golden fixture path.', { next: ['sherlock eval fixtures/grants/golden.json [model.json]'] });
+  if (!goldenFile) throw new AxiError('USAGE', 'Missing golden fixture path.', { next: ['sherlock eval fixtures/<name>/golden.json [model.json]'] });
   const golden = readJsonFile(goldenFile);
   const ws = modelFile ? null : findWorkspace(flags.dir);
   const model = modelFile ? readJsonFile(modelFile) : ws.model();

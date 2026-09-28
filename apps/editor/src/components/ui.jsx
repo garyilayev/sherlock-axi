@@ -1,6 +1,7 @@
 'use client';
 import { Fragment } from 'react';
-import { KINDS, CLASS_HELP, SOURCE_STATUS, COVERAGE, ID_IN_TEXT, dirOf, kindOfId } from '../lib/meta.js';
+import { SOURCE_STATUS, COVERAGE, ID_IN_TEXT, kindOfId } from '../lib/meta.js';
+import { useI18n } from '../i18n/index.js';
 
 const PATHS = {
   requirements: 'M4 4h12v12H4z M7 8h6 M7 11h6 M7 14h3',
@@ -32,14 +33,19 @@ const PATHS = {
   more: 'M5 10h.01 M10 10h.01 M15 10h.01',
   link: 'M8 12l4-4 M7 9L5.5 10.5a2.5 2.5 0 0 0 3.5 3.5L10.5 12.5 M13 11l1.5-1.5a2.5 2.5 0 0 0-3.5-3.5L9.5 7.5',
   arrow: 'M5 10h10 M11 6l4 4-4 4',
+  globe: 'M10 3a7 7 0 1 0 0 14a7 7 0 1 0 0-14z M3 10h14 M10 3c2 2 2.8 4.5 2.8 7s-.8 5-2.8 7c-2-2-2.8-4.5-2.8-7s.8-5 2.8-7z',
   refresh: 'M15 6v3h-3 M5 14v-3h3 M14.5 9A5 5 0 0 0 6 7 M5.5 11A5 5 0 0 0 14 13',
 };
 
+// Directional icons mirror under dir="rtl" (see .flip-rtl in styles.css).
+const DIRECTIONAL = new Set(['chevronLeft', 'chevronRight', 'arrow']);
+
 export function Icon({ name, size = 16, className, style }) {
   const d = PATHS[name] || PATHS.overview;
+  const cls = [className, DIRECTIONAL.has(name) && 'flip-rtl'].filter(Boolean).join(' ') || undefined;
   return (
     <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6"
-      strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      strokeLinecap="round" strokeLinejoin="round" className={cls} style={style} aria-hidden="true">
       <path d={d} />
     </svg>
   );
@@ -55,30 +61,43 @@ export function Logo({ size = 26 }) {
   );
 }
 
+/**
+ * User content (model / PRD text). Aligned to the UI direction, but each
+ * paragraph orders its characters by its own content (unicode-bidi: plaintext),
+ * so "Grant Price לא שלילי" reads correctly in both LTR and RTL.
+ */
+export function Bidi({ as: Tag = 'span', className, children, ...rest }) {
+  return <Tag className={className ? `bidi ${className}` : 'bidi'} {...rest}>{children}</Tag>;
+}
+
 export function ClassBadge({ value }) {
+  const { t, tv, has } = useI18n();
   if (!value) return null;
-  return <span className={`badge ${value}`} title={CLASS_HELP[value]}>{value}</span>;
+  return <span className={`badge ${value}`} title={has(`classification.help.${value}`) ? t(`classification.help.${value}`) : undefined}>{tv('classification', value)}</span>;
 }
 
 export function KindBadge({ kind, icon = false }) {
+  const { tv } = useI18n();
   return (
-    <span className="badge kind">{icon && <Icon name={kind} size={12} />}{KINDS[kind]?.singular ?? kind}</span>
+    <span className="badge kind">{icon && <Icon name={kind} size={12} />}{tv('kind', kind)}</span>
   );
 }
 
 export function SourceBadge({ status }) {
-  const s = SOURCE_STATUS[status] || SOURCE_STATUS.missing;
-  return <span className={`badge ${s.tone}`}>{s.label}</span>;
+  const { t } = useI18n();
+  const s = SOURCE_STATUS[status] ? status : 'missing';
+  return <span className={`badge ${SOURCE_STATUS[s]}`}>{t(`source.${s}`)}</span>;
 }
 
 export function CoverageBadge({ status }) {
-  const c = COVERAGE[status];
-  return c ? <span className={`badge ${c.tone}`}>{c.label}</span> : null;
+  const { t } = useI18n();
+  return COVERAGE[status] ? <span className={`badge ${COVERAGE[status]}`}>{t(`coverage.${status}`)}</span> : null;
 }
 
+/** IDs always render LTR in isolation, so TC-002 never shows up as 002-TC. */
 export function IdChip({ id, onOpen, title }) {
-  if (!onOpen) return <span className="id-chip" title={title}>{id}</span>;
-  return <button type="button" className="id-chip" title={title} onClick={(e) => { e.stopPropagation(); onOpen(id); }}>{id}</button>;
+  if (!onOpen) return <span className="id-chip" dir="ltr" title={title}>{id}</span>;
+  return <button type="button" className="id-chip" dir="ltr" title={title} onClick={(e) => { e.stopPropagation(); onOpen(id); }}>{id}</button>;
 }
 
 /** Plain text with Sherlock IDs turned into clickable chips. */
@@ -92,7 +111,7 @@ export function LinkedText({ text, onOpen, as: Tag = 'span', className }) {
     last = m.index + m[0].length;
   }
   parts.push(s.slice(last));
-  return <Tag className={className} dir={dirOf(s)}>{parts.map((p, i) => <Fragment key={i}>{p}</Fragment>)}</Tag>;
+  return <Bidi as={Tag} className={className}>{parts.map((p, i) => <Fragment key={i}>{p}</Fragment>)}</Bidi>;
 }
 
 /**
@@ -153,19 +172,19 @@ export function PrdText({ text, excerpt }) {
       const rows = lines.filter((l) => !/^\|\s*-+/.test(l)).map((l) => l.replace(/^\||\|$/g, '').split('|').map((c) => c.trim()));
       const [head, ...body] = rows;
       return (
-        <table className="prd-table" key={i} dir={dirOf(b)}>
-          <thead><tr>{head.map((c, j) => <th key={j}><Highlight text={c} excerpt={excerpt} /></th>)}</tr></thead>
-          <tbody>{body.map((r, k) => <tr key={k}>{r.map((c, j) => <td key={j}><Highlight text={c} excerpt={excerpt} /></td>)}</tr>)}</tbody>
+        <table className="prd-table" key={i}>
+          <thead><tr>{head.map((c, j) => <th key={j} className="bidi"><Highlight text={c} excerpt={excerpt} /></th>)}</tr></thead>
+          <tbody>{body.map((r, k) => <tr key={k}>{r.map((c, j) => <td key={j} className="bidi"><Highlight text={c} excerpt={excerpt} /></td>)}</tr>)}</tbody>
         </table>
       );
     }
     if (lines.every((l) => l.startsWith('- '))) {
-      return <ul key={i} dir={dirOf(b)}>{lines.map((l, k) => <li key={k}><Highlight text={l.slice(2)} excerpt={excerpt} /></li>)}</ul>;
+      return <ul key={i}>{lines.map((l, k) => <li key={k} className="bidi"><Highlight text={l.slice(2)} excerpt={excerpt} /></li>)}</ul>;
     }
     if (lines[0].startsWith('- ')) {
-      return <ul key={i} dir={dirOf(b)}><li><Highlight text={b.slice(2)} excerpt={excerpt} /></li></ul>;
+      return <ul key={i}><li className="bidi"><Highlight text={b.slice(2)} excerpt={excerpt} /></li></ul>;
     }
-    return <p key={i} dir={dirOf(b)}><Highlight text={b} excerpt={excerpt} /></p>;
+    return <p key={i} className="bidi"><Highlight text={b} excerpt={excerpt} /></p>;
   });
 }
 

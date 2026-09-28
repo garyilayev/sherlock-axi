@@ -1,27 +1,24 @@
 'use client';
 import { useState } from 'react';
-import { IdChip, LinkedText } from './ui.jsx';
-import { dirOf, timeAgo } from '../lib/meta.js';
+import { IdChip, LinkedText, Bidi } from './ui.jsx';
+import { useI18n } from '../i18n/index.js';
 
-const TYPES = [
-  { value: 'correction', label: 'Correction' },
-  { value: 'missing', label: 'Missing' },
-  { value: 'question', label: 'Question' },
-  { value: 'remove', label: 'Remove' },
-];
+const TYPES = ['correction', 'missing', 'question', 'remove'];
 
+// [feedback type, i18n key under feedback.quick]
 const QUICK = {
-  testCases: [['correction', 'The expected result is wrong: '], ['missing', 'Add a test for '], ['missing', 'Add a boundary/negative case: ']],
-  requirements: [['question', 'Where did this requirement come from?'], ['correction', 'The PRD says '], ['missing', 'Missing test coverage for ']],
-  flows: [['missing', 'This flow is missing a step: '], ['correction', 'Step order is wrong: ']],
-  project: [['missing', 'The guide is missing '], ['question', 'Why is there no coverage for '], ['correction', 'Across the guide, ']],
-  gaps: [['correction', 'Answer: '], ['remove', 'This is not a real gap — the PRD covers it in §']],
-  default: [['question', 'Why did Sherlock generate this?'], ['correction', 'This is wrong: '], ['remove', 'Not relevant — remove it.']],
+  testCases: [['correction', 'expectedWrong'], ['missing', 'addTestFor'], ['missing', 'addBoundary']],
+  requirements: [['question', 'whereFrom'], ['correction', 'prdSays'], ['missing', 'missingCoverage']],
+  flows: [['missing', 'missingStep'], ['correction', 'wrongOrder']],
+  project: [['missing', 'guideMissing'], ['question', 'noCoverageFor'], ['correction', 'acrossGuide']],
+  gaps: [['correction', 'answer'], ['remove', 'notAGap']],
+  default: [['question', 'why'], ['correction', 'wrong'], ['remove', 'irrelevant']],
 };
 
 const STATUS_TONE = { open: 'warn', resolved: 'ok', dismissed: '' };
 
 export function FeedbackItem({ f, onPatch, onOpen, showTarget }) {
+  const { t, tv, fmt } = useI18n();
   const [reply, setReply] = useState('');
   const [busy, setBusy] = useState(false);
   const send = async (body) => {
@@ -31,25 +28,25 @@ export function FeedbackItem({ f, onPatch, onOpen, showTarget }) {
   return (
     <div className="msg">
       <div className="who">
-        <b>QA</b><span className="mono">{f.id}</span>
-        <span className={`badge ${STATUS_TONE[f.status]}`}>{f.status}</span>
-        <span className="badge kind">{f.type}</span>
+        <b>{t('feedback.qa')}</b><span className="mono" dir="ltr">{f.id}</span>
+        <span className={`badge ${STATUS_TONE[f.status]}`}>{tv('status.feedback', f.status)}</span>
+        <span className="badge kind">{tv('feedback.type', f.type)}</span>
         {showTarget && <IdChip id={f.targetId} onOpen={f.targetId !== 'project' ? onOpen : undefined} />}
         <span className="grow" />
-        <span>{timeAgo(f.createdAt)}</span>
+        <span>{fmt.relative(f.createdAt)}</span>
       </div>
-      <p dir={dirOf(f.message)}>{f.message}</p>
+      <Bidi as="p">{f.message}</Bidi>
       {f.thread?.length > 0 && (
         <div className="replies">
           {f.thread.map((r, i) => (
             <div key={i} className={`reply ${r.author}`}>
-              <div className="who"><b>{r.author === 'claude' ? 'Claude' : 'QA'}</b><span>{timeAgo(r.at)}</span></div>
+              <div className="who"><b>{r.author === 'claude' ? t('feedback.claude') : t('feedback.qa')}</b><span>{fmt.relative(r.at)}</span></div>
               <LinkedText as="div" text={r.message} onOpen={onOpen} />
             </div>
           ))}
           {f.resolution?.changedIds?.length > 0 && (
             <div className="row wrap" style={{ gap: 4, fontSize: 12 }}>
-              <span className="faint">Changed in rev {f.resolution.revision}:</span>
+              <span className="faint">{t('feedback.changedIn', { rev: f.resolution.revision })}</span>
               {f.resolution.changedIds.slice(0, 10).map((id) => <IdChip key={id} id={id} onOpen={onOpen} />)}
             </div>
           )}
@@ -58,22 +55,24 @@ export function FeedbackItem({ f, onPatch, onOpen, showTarget }) {
       <div className="row" style={{ marginTop: 8 }}>
         <input
           value={reply}
+          dir="auto"
           onChange={(e) => setReply(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && reply.trim()) send({ message: reply }); }}
-          placeholder={f.status === 'open' ? 'Add detail…' : 'Reply to reopen…'}
-          style={{ flex: 1, height: 28, border: '1px solid var(--border)', borderRadius: 6, padding: '0 8px', background: 'var(--surface)', fontSize: 13 }}
+          placeholder={f.status === 'open' ? t('feedback.addDetail') : t('feedback.replyToReopen')}
+          style={{ flex: 1, height: 28, border: '1px solid var(--border)', borderRadius: 6, paddingInline: 8, background: 'var(--surface)', fontSize: 13 }}
         />
         {reply.trim()
-          ? <button type="button" className="btn sm" disabled={busy} onClick={() => send({ message: reply })}>{f.status === 'open' ? 'Add' : 'Reopen'}</button>
+          ? <button type="button" className="btn sm" disabled={busy} onClick={() => send({ message: reply })}>{f.status === 'open' ? t('feedback.add') : t('feedback.reopen')}</button>
           : f.status === 'open'
-            ? <button type="button" className="btn sm ghost" disabled={busy} onClick={() => send({ status: 'dismissed' })}>Withdraw</button>
-            : <button type="button" className="btn sm ghost" disabled={busy} onClick={() => send({ status: 'open' })}>Reopen</button>}
+            ? <button type="button" className="btn sm ghost" disabled={busy} onClick={() => send({ status: 'dismissed' })}>{t('feedback.withdraw')}</button>
+            : <button type="button" className="btn sm ghost" disabled={busy} onClick={() => send({ status: 'open' })}>{t('feedback.reopen')}</button>}
       </div>
     </div>
   );
 }
 
 export function FeedbackPanel({ targetId, kind, feedback, onSend, onPatch, onOpen, hideThread = false, placeholder }) {
+  const { t } = useI18n();
   const [text, setText] = useState('');
   const [type, setType] = useState('correction');
   const [busy, setBusy] = useState(false);
@@ -101,9 +100,10 @@ export function FeedbackPanel({ targetId, kind, feedback, onSend, onPatch, onOpe
         </div>
       )}
       <div className="quick">
-        {quick.map(([t, q]) => (
-          <button type="button" key={q} onClick={() => { setType(t); setText(q); }}>{q.replace(/[: ]+$/, '')}</button>
-        ))}
+        {quick.map(([ty, key]) => {
+          const q = t(`feedback.quick.${key}`);
+          return <button type="button" key={key} onClick={() => { setType(ty); setText(q); }}>{q.replace(/[:§ ]+$/, '')}</button>;
+        })}
       </div>
       <div className="composer">
         <textarea
@@ -111,24 +111,25 @@ export function FeedbackPanel({ targetId, kind, feedback, onSend, onPatch, onOpe
           dir="auto"
           onChange={(e) => { setText(e.target.value); setSent(null); }}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
-          placeholder={placeholder ?? `Feedback for Claude on ${targetId}…`}
-          aria-label="Feedback"
+          placeholder={placeholder ?? t('feedback.placeholder', { id: targetId })}
+          aria-label={t('inspector.feedback')}
         />
         <div className="bar2">
-          {TYPES.map((t) => (
-            <button type="button" key={t.value} className={`chip-toggle ${type === t.value ? 'on' : ''}`} onClick={() => setType(t.value)}>{t.label}</button>
+          {TYPES.map((ty) => (
+            <button type="button" key={ty} className={`chip-toggle ${type === ty ? 'on' : ''}`} onClick={() => setType(ty)}>{t(`feedback.type.${ty}`)}</button>
           ))}
           <span className="grow" />
-          <kbd>Ctrl ↵</kbd>
-          <button type="button" className="btn primary sm" disabled={!text.trim() || busy} onClick={submit}>Send to Claude</button>
+          <kbd dir="ltr">Ctrl ↵</kbd>
+          <button type="button" className="btn primary sm" disabled={!text.trim() || busy} onClick={submit}>{t('feedback.send')}</button>
         </div>
       </div>
-      {sent && <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>{sent} saved locally. Claude picks it up with <span className="mono">sherlock feedback</span>.</div>}
+      {sent && <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>{t('feedback.saved', { id: sent, cmd: <span className="mono" dir="ltr">sherlock feedback</span> })}</div>}
     </div>
   );
 }
 
 export function FeedbackView({ state, onOpen, onPatch, onSend }) {
+  const { t } = useI18n();
   const [filter, setFilter] = useState('open');
   const list = [...(state.feedback || [])].reverse().filter((f) => filter === 'all' || f.status === filter);
   const count = (s) => (state.feedback || []).filter((f) => f.status === s).length;
@@ -136,27 +137,31 @@ export function FeedbackView({ state, onOpen, onPatch, onSend }) {
     <div className="page">
       <div className="page-head">
         <div className="grow">
-          <h1>Feedback</h1>
-          <p>Everything the QA has asked Claude to change or explain. Claude reads this with <span className="mono">sherlock feedback</span>, updates the model, and replies here.</p>
+          <h1>{t('feedback.title')}</h1>
+          <p>{t('feedback.intro', { cmd: <span className="mono" dir="ltr">sherlock feedback</span> })}</p>
         </div>
       </div>
       <div className="toolbar">
         <div className="seg">
           {['open', 'resolved', 'dismissed', 'all'].map((s) => (
             <button type="button" key={s} className={filter === s ? 'on' : ''} onClick={() => setFilter(s)}>
-              {s}{s !== 'all' && <span className="n">{count(s)}</span>}
+              {t(`status.feedback.${s}`)}{s !== 'all' && <span className="n">{count(s)}</span>}
             </button>
           ))}
         </div>
       </div>
       <div className="card general-feedback" style={{ maxWidth: 820, padding: 14, marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>General feedback</div>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>{t('feedback.general')}</div>
         <FeedbackPanel targetId="project" kind="project" feedback={state.feedback} onSend={onSend} onPatch={onPatch} onOpen={onOpen}
-          hideThread placeholder="Feedback on the guide as a whole (missing areas, wrong assumptions)…" />
+          hideThread placeholder={t('feedback.generalPlaceholder')} />
       </div>
       <div className="thread" style={{ maxWidth: 820 }}>
         {list.map((f) => <FeedbackItem key={f.id} f={f} onPatch={onPatch} onOpen={onOpen} showTarget />)}
-        {!list.length && <div className="card empty">No {filter === 'all' ? '' : filter} feedback. Select any item and use “Send to Claude”.</div>}
+        {!list.length && (
+          <div className="card empty">
+            {filter === 'all' ? t('feedback.emptyAll') : t('feedback.empty', { status: t(`status.feedback.${filter}`).toLowerCase() })}
+          </div>
+        )}
       </div>
     </div>
   );

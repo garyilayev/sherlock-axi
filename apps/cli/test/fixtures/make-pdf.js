@@ -1,5 +1,6 @@
 // Writes minimal, valid text PDFs (Helvetica, one content stream per page)
-// for extraction tests. Run directly to regenerate the committed fixtures:
+// for extraction tests. The PDFs are gitignored mock data: pdf.test.js creates
+// them when missing, or run this directly to regenerate them:
 //   node apps/cli/test/fixtures/make-pdf.js
 import fs from 'node:fs';
 import path from 'node:path';
